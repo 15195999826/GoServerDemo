@@ -1,0 +1,31 @@
+namespace GameProtocol;
+
+enum MessageType:byte { 
+    PlayerJoin = 0,
+    PlayerMove = 1,
+    GameState = 2,
+    Heartbeat = 3  // 添加心跳消息类型
+}
+
+table Vector2 {
+    x:float;
+    y:float;
+}
+
+table PlayerState {
+    id:int;
+    position:Vector2;
+    name:string;
+}
+
+table GameState {
+    players:[PlayerState];
+    tick:int;
+}
+
+table Message {
+    type:MessageType;
+    payload:[ubyte];
+}
+
+root_type Message;
