@@ -2,6 +2,7 @@ package main
 
 import (
 	"gameproject/GameProtocol"
+	"gameproject/server/gui"
 	"log"
 	"time"
 
@@ -29,6 +30,7 @@ func NewGameServer() *GameServer {
 }
 
 func (s *GameServer) Start() {
+	gui.CreateWindow()
 	listener, err := kcp.ListenWithOptions(":12345", nil, 0, 0)
 	if err != nil {
 		log.Fatal(err)
