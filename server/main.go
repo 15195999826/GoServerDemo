@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"gameproject/GameProtocol"
 	"gameproject/server/gui"
 	"log"
+	"strconv"
+	"sync"
 	"time"
 
 	flatbuffers "github.com/google/flatbuffers/go"
@@ -11,8 +15,20 @@ import (
 )
 
 type GameServer struct {
-	players map[int]*Player
-	nextID  int
+	players  map[int]*Player
+	nextID   int
+	listener *kcp.Listener
+	config   *ServerConfig
+	ctx      context.Context
+	cancel   context.CancelFunc
+	wg       sync.WaitGroup
+}
+
+type ServerConfig struct {
+	Port              int
+	TickRate          time.Duration
+	MaxPlayers        int
+	HeartbeatInterval time.Duration
 }
 
 type Player struct {
@@ -23,69 +39,160 @@ type Player struct {
 }
 
 func NewGameServer() *GameServer {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &GameServer{
 		players: make(map[int]*Player),
 		nextID:  1,
+		ctx:     ctx,
+		cancel:  cancel,
 	}
 }
 
-func (s *GameServer) Start() {
-	gui.CreateWindow()
-	listener, err := kcp.ListenWithOptions(":12345", nil, 0, 0)
+func (s *GameServer) Configure(port, tickRate, maxPlayers, heartbeat string) error {
+	p, err := strconv.Atoi(port)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
-	// 启动游戏tick
-	ticker := time.NewTicker(50 * time.Millisecond)
+	t, err := strconv.Atoi(tickRate)
+	if err != nil {
+		return err
+	}
+
+	m, err := strconv.Atoi(maxPlayers)
+	if err != nil {
+		return err
+	}
+
+	h, err := strconv.Atoi(heartbeat)
+	if err != nil {
+		return err
+	}
+
+	s.config = &ServerConfig{
+		Port:              p,
+		TickRate:          time.Duration(t) * time.Millisecond,
+		MaxPlayers:        m,
+		HeartbeatInterval: time.Duration(h) * time.Second,
+	}
+	return nil
+}
+
+func (s *GameServer) Start() error {
+	if s.config == nil {
+		return fmt.Errorf("server not configured")
+	}
+
+	var err error
+	s.listener, err = kcp.ListenWithOptions(fmt.Sprintf(":%d", s.config.Port), nil, 0, 0)
+	if err != nil {
+		return err
+	}
+
+	// Game tick routine
+	s.wg.Add(1)
 	go func() {
-		for range ticker.C {
-			s.update()
+		defer s.wg.Done()
+		ticker := time.NewTicker(s.config.TickRate)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				s.update()
+			case <-s.ctx.Done():
+				return
+			}
 		}
 	}()
 
-	// 启动心跳检测
-	heartbeatTicker := time.NewTicker(5 * time.Second)
+	// Heartbeat routine
+	s.wg.Add(1)
 	go func() {
-		for range heartbeatTicker.C {
-			now := time.Now()
-			// 使用临时map来避免在遍历时修改
-			disconnected := make([]int, 0)
+		defer s.wg.Done()
+		ticker := time.NewTicker(s.config.HeartbeatInterval)
+		defer ticker.Stop()
 
-			for id, player := range s.players {
-				if now.Sub(player.lastActive) > 2*time.Second {
-					log.Printf("Player %d (%s) timeout", id, player.conn.RemoteAddr())
-					disconnected = append(disconnected, id)
-				}
-			}
-
-			// 清理断开的连接
-			for _, id := range disconnected {
-				if player, ok := s.players[id]; ok {
-					player.conn.Close()
-					delete(s.players, id)
-				}
+		for {
+			select {
+			case <-ticker.C:
+				s.checkHeartbeats()
+			case <-s.ctx.Done():
+				return
 			}
 		}
 	}()
 
-	log.Println("Server started on :12345")
-	for {
-		conn, err := listener.AcceptKCP()
-		if err != nil {
-			log.Println("Accept error:", err)
-			continue
+	// Accept connections routine
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		for {
+			select {
+			case <-s.ctx.Done():
+				return
+			default:
+				conn, err := s.listener.AcceptKCP()
+				if err != nil {
+					if s.ctx.Err() != nil {
+						return // Server is shutting down
+					}
+					log.Println("Accept error:", err)
+					continue
+				}
+
+				if len(s.players) >= s.config.MaxPlayers {
+					log.Printf("Rejected connection: server full")
+					conn.Close()
+					continue
+				}
+
+				player := &Player{
+					id:   s.nextID,
+					conn: conn,
+				}
+				s.nextID++
+				s.players[player.id] = player
+
+				s.wg.Add(1)
+				go func() {
+					defer s.wg.Done()
+					s.handlePlayer(player)
+				}()
+			}
 		}
+	}()
 
-		player := &Player{
-			id:   s.nextID,
-			conn: conn,
+	log.Printf("Server started on port %d", s.config.Port)
+	return nil
+}
+
+func (s *GameServer) Stop() {
+	log.Println("Stopping server...")
+	s.cancel()
+	if s.listener != nil {
+		s.listener.Close()
+	}
+	s.wg.Wait()
+	log.Println("Server stopped")
+}
+
+func (s *GameServer) checkHeartbeats() {
+	now := time.Now()
+	disconnected := make([]int, 0)
+
+	for id, player := range s.players {
+		if now.Sub(player.lastActive) > 2*s.config.HeartbeatInterval {
+			log.Printf("Player %d timeout", id)
+			disconnected = append(disconnected, id)
 		}
+	}
 
-		s.nextID++
-		s.players[player.id] = player
-
-		go s.handlePlayer(player)
+	for _, id := range disconnected {
+		if player, ok := s.players[id]; ok {
+			player.conn.Close()
+			delete(s.players, id)
+		}
 	}
 }
 
@@ -184,5 +291,21 @@ func (s *GameServer) handlePlayer(player *Player) {
 
 func main() {
 	server := NewGameServer()
-	server.Start()
+
+	// Setup GUI callbacks
+	gui.SetServerCallbacks(
+		func(port, tickRate, maxPlayers, heartbeat string) error {
+			return server.Configure(port, tickRate, maxPlayers, heartbeat)
+		},
+		func() error {
+			return server.Start()
+		},
+		func() {
+			server.Stop()
+		},
+	)
+
+	// Create and run GUI
+	gui.CreateWindow()
+	gui.RunWindow() // 使用新的 RunWindow 函数
 }

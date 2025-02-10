@@ -3,17 +3,35 @@ package gui
 import (
 	"fmt"
 	"image/color"
-	"net/url"
+	"log"
 	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
+
+var (
+	mainWindow  fyne.Window
+	logEntry    *widget.Entry
+	startButton *widget.Button
+	stopButton  *widget.Button
+	OnConfigure func(port, tickRate, maxPlayers, heartbeat string) error
+	OnStart     func() error
+	OnStop      func()
+	myApp       fyne.App
+)
+
+// ServerConfig holds the server configuration values
+type ServerConfig struct {
+	Port              string
+	TickRate          string
+	MaxPlayers        string
+	HeartbeatInterval string
+}
 
 // 创建可选择的只读文本框
 func newSelectableLabel(text string) *widget.Entry {
@@ -57,123 +75,137 @@ func newScrollableLabel(text string) *widget.Entry {
 	return entry
 }
 
-func CreateWindow() {
-	myApp := app.New()
-	// 设置自定义主题以确保禁用状态下的文本仍然清晰可见
-	myApp.Settings().SetTheme(&customTheme{theme.DefaultTheme()})
-	myWindow := myApp.NewWindow("Fyne Components Demo")
-
-	// 基础输入组件示例
-	basicInputs := container.NewVBox(
-		widget.NewLabel("Basic Input Components:"),
-		widget.NewEntry(),
-		widget.NewPasswordEntry(),
-		widget.NewMultiLineEntry(),
-		widget.NewCheck("Checkbox", func(checked bool) {
-			fmt.Println("Checked:", checked)
-		}),
-	)
-
-	// 按钮组件示例
-	buttons := container.NewVBox(
-		widget.NewLabel("Button Components:"),
-		widget.NewButton("Standard Button", func() {
-			fmt.Println("Button tapped")
-		}),
-		widget.NewButtonWithIcon("Icon Button", theme.HomeIcon(), func() {
-			fmt.Println("Icon button tapped")
-		}),
-	)
-
-	// 选择组件示例
-	selections := container.NewVBox(
-		widget.NewLabel("Selection Components:"),
-		widget.NewSelect([]string{"Option 1", "Option 2", "Option 3"}, func(s string) {
-			fmt.Println("Selected:", s)
-		}),
-		widget.NewRadioGroup([]string{"Radio 1", "Radio 2"}, func(s string) {
-			fmt.Println("Radio selected:", s)
-		}),
-	)
-
-	// 进度指示器示例
-	progress := container.NewVBox(
-		widget.NewLabel("Progress Indicators:"),
-		widget.NewProgressBar(),
-		widget.NewProgressBarInfinite(),
-	)
-
-	// 数据绑定示例
-	data := binding.NewString()
-	data.Set("Binding Demo")
-	bindingDemo := container.NewVBox(
-		widget.NewLabel("Data Binding:"),
-		widget.NewEntryWithData(data),
-		widget.NewLabelWithData(data),
-	)
-
-	// 文本组件示例
-	scrollableText := newScrollableLabel(`This is a long multi-line text
-Line 2
-Line 3
-Line 4
-Line 5
-Line 6
-Line 7
-Line 8
-Line 9
-Last line - This will be visible initially`)
-
-	textComponents := container.NewVBox(
-		widget.NewButton("Scroll To End", func() {
-			// 手动触发滚动到底部
-			lineCount := len(strings.Split(scrollableText.Text, "\n"))
-			scrollableText.CursorRow = lineCount - 1
-			scrollableText.Refresh()
-		}),
-		widget.NewLabel("Text Components:"),
-		widget.NewLabel("Simple Label (Not Selectable)"),
-		newSelectableLabel("This is a selectable text with better visibility"),
-		scrollableText, // 使用已存储的引用
-		widget.NewRichTextFromMarkdown("**Rich Text** with *Markdown* (Not Selectable)"),
-		widget.NewHyperlink("Clickable Link", parseURL("https://fyne.io")),
-		widget.NewTextGrid(),
-		container.NewHBox(
-			widget.NewIcon(theme.DocumentIcon()),
-			widget.NewLabelWithStyle("Styled Label", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
-		),
-	)
-
-	// 使用选项卡组织所有组件
-	tabs := container.NewAppTabs(
-		container.NewTabItem("Basic Inputs", basicInputs),
-		container.NewTabItem("Buttons", buttons),
-		container.NewTabItem("Selections", selections),
-		container.NewTabItem("Progress", progress),
-		container.NewTabItem("Data Binding", bindingDemo),
-		container.NewTabItem("Text", textComponents), // 添加新的文本组件选项卡
-	)
-
-	myWindow.SetContent(tabs)
-	myWindow.Resize(fyne.NewSize(400, 500))
-
-	// 启动一个goroutine来演示进度条
-	go func() {
-		if p, ok := progress.Objects[1].(*widget.ProgressBar); ok {
-			for i := 0.0; i <= 1.0; i += 0.1 {
-				time.Sleep(time.Second)
-				p.SetValue(i)
-			}
-		}
-	}()
-
-	myWindow.ShowAndRun()
+// SetServerCallbacks sets the callback functions for server control
+func SetServerCallbacks(configure func(port, tickRate, maxPlayers, heartbeat string) error,
+	start func() error,
+	stop func()) {
+	OnConfigure = configure
+	OnStart = start
+	OnStop = stop
 }
 
-// 辅助函数：解析URL
-func parseURL(urlStr string) *url.URL {
-	link, _ := url.Parse(urlStr)
-	return link
+// CreateWindow creates and configures the window but doesn't start the event loop
+func CreateWindow() {
+	myApp = app.New()
+	myApp.Settings().SetTheme(&customTheme{theme.DefaultTheme()})
+	mainWindow = myApp.NewWindow("Game Server Control Panel")
+
+	config := &ServerConfig{
+		Port:              "12345",
+		TickRate:          "50",
+		MaxPlayers:        "100",
+		HeartbeatInterval: "5",
+	}
+
+	// Configuration section
+	portEntry := widget.NewEntry()
+	portEntry.SetText(config.Port)
+	tickRateEntry := widget.NewEntry()
+	tickRateEntry.SetText(config.TickRate)
+	maxPlayersEntry := widget.NewEntry()
+	maxPlayersEntry.SetText(config.MaxPlayers)
+	heartbeatEntry := widget.NewEntry()
+	heartbeatEntry.SetText(config.HeartbeatInterval)
+
+	configBox := container.NewGridWithColumns(2,
+		widget.NewLabel("Port:"),
+		portEntry,
+		widget.NewLabel("Tick Rate (ms):"),
+		tickRateEntry,
+		widget.NewLabel("Max Players:"),
+		maxPlayersEntry,
+		widget.NewLabel("Heartbeat Interval (s):"),
+		heartbeatEntry,
+	)
+
+	// Control buttons
+	startButton = widget.NewButton("Start Server", func() {
+		if OnConfigure != nil {
+			err := OnConfigure(portEntry.Text, tickRateEntry.Text, maxPlayersEntry.Text, heartbeatEntry.Text)
+			if err != nil {
+				writeLog("Configuration error: " + err.Error())
+				return
+			}
+		}
+
+		if OnStart != nil {
+			if err := OnStart(); err != nil {
+				writeLog("Start error: " + err.Error())
+				return
+			}
+		}
+		startButton.Disable()
+		stopButton.Enable()
+	})
+
+	stopButton = widget.NewButton("Stop Server", func() {
+		if OnStop != nil {
+			OnStop()
+		}
+		startButton.Enable()
+		stopButton.Disable()
+	})
+	stopButton.Disable()
+
+	buttonBox := container.NewHBox(startButton, stopButton)
+
+	// Log output
+	logEntry = widget.NewMultiLineEntry()
+	logEntry.Disable()
+	logEntry.TextStyle = fyne.TextStyle{Monospace: true}
+	logEntry.Wrapping = fyne.TextWrapWord
+
+	// Redirect standard logger to our GUI
+	log.SetOutput(&logWriter{})
+
+	logScroll := container.NewScroll(logEntry)
+	logScroll.SetMinSize(fyne.NewSize(0, 300)) // 设置最小高度为200
+
+	// Main layout
+	mainContainer := container.NewVBox(
+		widget.NewCard("Server Configuration", "", configBox),
+		widget.NewCard("Controls", "", buttonBox),
+		widget.NewCard("Server Logs", "", logScroll),
+	)
+
+	mainWindow.SetContent(mainContainer)
+	mainWindow.Resize(fyne.NewSize(600, 400))
+	mainWindow.Show()
+}
+
+// RunWindow starts the main event loop
+func RunWindow() {
+	if mainWindow != nil {
+		mainWindow.ShowAndRun()
+	}
+}
+
+// logWriter implements io.Writer to redirect logs to the GUI
+type logWriter struct{}
+
+func (w *logWriter) Write(bytes []byte) (int, error) {
+	writeLog(string(bytes))
+	return len(bytes), nil
+}
+
+// writeLog adds a new log entry to the log window
+func writeLog(msg string) {
+	if logEntry == nil {
+		return
+	}
+
+	timestamp := time.Now().Format("15:04:05")
+	logMsg := fmt.Sprintf("[%s] %s", timestamp, msg)
+
+	current := logEntry.Text
+	if current != "" {
+		current += "\n"
+	}
+	logEntry.SetText(current + strings.TrimSpace(logMsg))
+
+	// Scroll to bottom
+	logEntry.CursorRow = len(strings.Split(logEntry.Text, "\n")) - 1
+	logEntry.Refresh()
 }
 
 // 自定义主题来覆盖禁用状态的文本颜色
