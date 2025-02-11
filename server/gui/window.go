@@ -33,25 +33,6 @@ type ServerConfig struct {
 	HeartbeatInterval string
 }
 
-// 创建可选择的只读文本框
-func newSelectableLabel(text string) *widget.Entry {
-	entry := widget.NewMultiLineEntry()
-	entry.SetText(text)
-	entry.Disable()
-	// 自定义样式：使用正常的文本颜色
-	entry.TextStyle = fyne.TextStyle{}
-	entry.Wrapping = fyne.TextWrapWord
-
-	// 重写默认的禁用样式
-	customEntry := entry
-	customEntry.OnSubmitted = func(string) {} // 防止编辑
-	customEntry.Disable()
-
-	// 使用自定义资源设置正常的文本颜色
-	customEntry.Refresh()
-	return customEntry
-}
-
 // 创建可滚动到底部的多行文本框
 func newScrollableLabel(text string) *widget.Entry {
 	entry := widget.NewMultiLineEntry()
@@ -150,10 +131,7 @@ func CreateWindow() {
 	buttonBox := container.NewHBox(startButton, stopButton)
 
 	// Log output
-	logEntry = widget.NewMultiLineEntry()
-	logEntry.Disable()
-	logEntry.TextStyle = fyne.TextStyle{Monospace: true}
-	logEntry.Wrapping = fyne.TextWrapWord
+	logEntry = newScrollableLabel("")
 
 	// Redirect standard logger to our GUI
 	log.SetOutput(&logWriter{})
@@ -169,7 +147,7 @@ func CreateWindow() {
 	)
 
 	mainWindow.SetContent(mainContainer)
-	mainWindow.Resize(fyne.NewSize(600, 400))
+	mainWindow.Resize(fyne.NewSize(900, 600))
 	mainWindow.Show()
 }
 
@@ -217,15 +195,17 @@ func (t *customTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant)
 	switch name {
 	case theme.ColorNameDisabled:
 		// Entry禁用状态显示浅灰色文字
-		return color.NRGBA{R: 200, G: 200, B: 200, A: 255}
-	case theme.ColorNameInputBackground:
-		// Entry的背景色为黑色
 		return color.NRGBA{R: 0, G: 0, B: 0, A: 255}
-	case theme.ColorNamePlaceHolder, theme.ColorNameInputBorder:
-		// Entry的占位符文字和边框颜色
-		return color.NRGBA{R: 160, G: 160, B: 160, A: 255}
-	default:
-		// 其他所有颜色保持默认
-		return t.Theme.Color(name, variant)
+		// case theme.ColorNameInputBackground:
+		// Entry的背景色为黑色
+		// return color.NRGBA{R: 0, G: 0, B: 0, A: 255}
+		// case theme.ColorNamePlaceHolder, theme.ColorNameInputBorder:
+		// 	// Entry的占位符文字和边框颜色
+		// 	return color.NRGBA{R: 160, G: 160, B: 160, A: 255}
+		// default:
+		// 	// 其他所有颜色保持默认
+		// 	return t.Theme.Color(name, variant)
 	}
+
+	return t.Theme.Color(name, variant)
 }
