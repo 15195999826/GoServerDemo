@@ -1,0 +1,18 @@
+namespace fb;
+
+enum ClientCommand : byte {
+  C2S_COMMAND_INVALID = 0,
+  C2S_COMMAND_PING = 1,
+  C2S_COMMAND_PLAYERINFO = 2, // 收到服务器的EnterRoom消息后，客户端发送自己的信息
+  C2S_COMMAND_GAMELOADED = 3, //告知服务端加载完毕
+  C2S_COMMAND_REQUESTTIME = 10,
+
+  C2S_COMMAND_PLAYERINPUT = 100,
+}
+
+table C2SCommand {
+  command:fb.ClientCommand;
+  body:[ubyte];
+}
+
+root_type C2SCommand;

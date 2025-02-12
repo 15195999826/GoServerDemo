@@ -4,18 +4,51 @@ import (
 	"log"
 	"time"
 
-	"gameproject/GameProtocol"
+	"gameproject/fb"
 
-	flatbuffers "github.com/google/flatbuffers/go"
 	kcp "github.com/xtaci/kcp-go/v5"
 )
 
+type GameState int
+
+const (
+	Invalid GameState = iota
+	Room
+	Game
+	GameOver
+)
+
+func (s GameState) String() string {
+	return [...]string{"Invalid", "Room", "Game", "GameOver"}[s]
+}
+
 type GameClient struct {
-	conn *kcp.UDPSession
+	conn          *kcp.UDPSession
+	commandSender *CommandSender
+
+	heartbeatInterval time.Duration
+
+	timeSyncedTimes          int
+	systemTimeDiffWithServer time.Duration
+	alreadyTimeSyncTimes     int
+	lastSendTime             time.Time
+
+	rtt time.Duration
+
+	gameState GameState
+
+	playerID int
+
+	gameStartTime time.Time
 }
 
 func NewGameClient() *GameClient {
-	return &GameClient{}
+	client := &GameClient{
+		gameState:            Invalid,
+		alreadyTimeSyncTimes: 0,
+	}
+	client.commandSender = NewCommandSender()
+	return client
 }
 
 func (c *GameClient) Connect() error {
@@ -34,23 +67,14 @@ func (c *GameClient) Start() {
 	heartbeatTicker := time.NewTicker(1 * time.Second)
 	go func() {
 		for range heartbeatTicker.C {
-			builder := flatbuffers.NewBuilder(1024)
-			GameProtocol.MessageStart(builder)
-			GameProtocol.MessageAddType(builder, GameProtocol.MessageTypeHeartbeat)
-			message := GameProtocol.MessageEnd(builder)
-			builder.Finish(message)
-			data := builder.FinishedBytes()
-			if _, err := c.conn.Write(data); err != nil {
-				log.Println("Heartbeat error:", err)
-				return
-			}
+			c.commandSender.SendPing(c.conn)
 		}
 	}()
 
-	// 定期发送更新
-	ticker := time.NewTicker(50 * time.Millisecond)
+	// 以60帧率进行Tick
+	ticker := time.NewTicker(time.Second / 60)
 	for range ticker.C {
-		c.sendUpdate()
+		c.Tick()
 	}
 }
 
@@ -64,47 +88,52 @@ func (c *GameClient) receiveMessages() {
 		}
 
 		// 解析接收到的消息
-		message := GameProtocol.GetRootAsMessage(buffer[:n], 0)
+		s2cCommand := fb.GetRootAsS2CCommand(buffer[:n], 0)
 
 		// 根据消息类型处理
-		switch message.Type() {
-		case GameProtocol.MessageTypeGameState:
-			// 处理游戏状态更新
-			log.Println("Received game state update")
+		switch s2cCommand.Command() {
+		default:
+			log.Println("Unknown command from server:", s2cCommand.Command())
+		case fb.ServerCommandS2C_COMMAND_PONG:
+		case fb.ServerCommandS2C_COMMAND_ENTERROOM:
+			enterRoom := fb.GetRootAsS2CEnterRoom(s2cCommand.BodyBytes(), 0)
+			c.playerID = int(enterRoom.PlayerId())
+			heartbeatInterval := float32(enterRoom.HeartbeatInterval()) / 2 // 这里用一般的时间发送Ping
+			c.heartbeatInterval = time.Duration(heartbeatInterval) * time.Second
+			c.timeSyncedTimes = int(enterRoom.TimeSyncTimes())
+			log.Printf("Enter room, player id: %d, heartbeat interval: %v, time sync times: %d", c.playerID, c.heartbeatInterval, c.timeSyncedTimes)
+
+		case fb.ServerCommandS2C_COMMAND_STARTENTERGAME:
+		case fb.ServerCommandS2C_COMMAND_STARTGAME:
+		case fb.ServerCommandS2C_COMMAND_WORLDSYNC:
+		case fb.ServerCommandS2C_COMMAND_RESPONSETIME:
+			c.alreadyTimeSyncTimes++
+			responseTime := fb.GetRootAsS2CResponseTime(s2cCommand.BodyBytes(), 0)
+			thzTimeRTT := time.Since(c.lastSendTime)
+			serverTime := time.Unix(0, responseTime.ServerTime())
+			thzTimeSystemTimeDiffWithServer := time.Until(serverTime.Add(-thzTimeRTT / 2))
+			log.Printf("Response time, rtt: %v, server time: %v, system time diff with server: %v", thzTimeRTT, serverTime, thzTimeSystemTimeDiffWithServer)
+			// rtt记录为平均值
+			c.rtt = (c.rtt*time.Duration(c.alreadyTimeSyncTimes-1) + thzTimeRTT) / time.Duration(c.alreadyTimeSyncTimes)
+			// 系统时间与服务器时间的差值记录为平均值
+			c.systemTimeDiffWithServer = (c.systemTimeDiffWithServer*time.Duration(c.alreadyTimeSyncTimes-1) + thzTimeSystemTimeDiffWithServer) / time.Duration(c.alreadyTimeSyncTimes)
+			log.Printf("AVG, rtt: %v, system time diff with server: %v", c.rtt, c.systemTimeDiffWithServer)
 		}
 	}
 }
 
-func (c *GameClient) sendUpdate() {
-	builder := flatbuffers.NewBuilder(1024)
-
-	// 创建玩家位置
-	GameProtocol.Vector2Start(builder)
-	GameProtocol.Vector2AddX(builder, 100.0)
-	GameProtocol.Vector2AddY(builder, 100.0)
-	position := GameProtocol.Vector2End(builder)
-
-	// 创建玩家状态
-	name := builder.CreateString("Player1")
-	GameProtocol.PlayerStateStart(builder)
-	GameProtocol.PlayerStateAddId(builder, 1)
-	GameProtocol.PlayerStateAddPosition(builder, position)
-	GameProtocol.PlayerStateAddName(builder, name)
-	playerState := GameProtocol.PlayerStateEnd(builder)
-
-	// 创建消息payload
-	GameProtocol.MessageStart(builder)
-	GameProtocol.MessageAddType(builder, GameProtocol.MessageTypePlayerMove)
-	GameProtocol.MessageAddPayload(builder, playerState)
-	message := GameProtocol.MessageEnd(builder)
-
-	builder.Finish(message)
-
-	// 发送消息
-	data := builder.FinishedBytes()
-	_, err := c.conn.Write(data)
-	if err != nil {
-		log.Println("Write error:", err)
+func (c *GameClient) Tick() {
+	switch c.gameState {
+	case Invalid:
+	case Room:
+		if c.alreadyTimeSyncTimes < c.timeSyncedTimes {
+			c.commandSender.SendRequestTime(c.conn)
+			c.lastSendTime = time.Now()
+		}
+	case Game:
+	case GameOver:
+	default:
+		log.Println("未处理的 game state")
 	}
 }
 

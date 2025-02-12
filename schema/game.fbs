@@ -1,11 +1,4 @@
-namespace GameProtocol;
-
-enum MessageType:byte { 
-    PlayerJoin = 0,
-    PlayerMove = 1,
-    GameState = 2,
-    Heartbeat = 3  // 添加心跳消息类型
-}
+namespace fb;
 
 enum PlayerCommandType:byte { 
     // 向上移动
@@ -18,30 +11,7 @@ enum PlayerCommandType:byte {
     MoveRight = 3,
 }
 
-table Vector2 {
-    x:float;
-    y:float;
-}
-
-table PlayerState {
-    id:int;
-    position:Vector2;
-    name:string;
-}
-
-table GameState {
-    players:[PlayerState];
-    tick:int;
-}
-
-table Message {
-    type:MessageType;
-    payload:[ubyte];
-}
-
 table PlayerInput {
     frame:int;
     command_type:PlayerCommandType;
 }
-
-root_type Message;
