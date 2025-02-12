@@ -15,14 +15,16 @@ import (
 )
 
 var (
-	mainWindow  fyne.Window
-	logEntry    *widget.Entry
-	startButton *widget.Button
-	stopButton  *widget.Button
-	OnConfigure func(port, tickRate, maxPlayers, heartbeat string) error
-	OnStart     func() error
-	OnStop      func()
-	myApp       fyne.App
+	mainWindow       fyne.Window
+	logEntry         *widget.Entry
+	startButton      *widget.Button
+	stopButton       *widget.Button
+	OnConfigure      func(port, tickRate, maxPlayers, heartbeat string) error
+	OnStart          func() error
+	OnStop           func()
+	myApp            fyne.App
+	playerCountLabel *widget.Label
+	uptimeLabel      *widget.Label
 )
 
 // ServerConfig holds the server configuration values
@@ -63,6 +65,20 @@ func SetServerCallbacks(configure func(port, tickRate, maxPlayers, heartbeat str
 	OnConfigure = configure
 	OnStart = start
 	OnStop = stop
+}
+
+// UpdatePlayerCount updates the player count display
+func UpdatePlayerCount(count int) {
+	if playerCountLabel != nil {
+		playerCountLabel.SetText(fmt.Sprintf("Current Players: %d", count))
+	}
+}
+
+// UpdateUptime updates the server uptime display
+func UpdateUptime(duration time.Duration) {
+	if uptimeLabel != nil {
+		uptimeLabel.SetText(fmt.Sprintf("Server Uptime: %s", duration.Round(time.Second)))
+	}
 }
 
 // CreateWindow creates and configures the window but doesn't start the event loop
@@ -128,7 +144,29 @@ func CreateWindow() {
 	})
 	stopButton.Disable()
 
-	buttonBox := container.NewHBox(startButton, stopButton)
+	buttonBox := container.NewVBox(startButton, stopButton)
+
+	// Server stats
+	playerCountLabel = widget.NewLabel("Players: 0")
+	statsBox := container.NewVBox(
+		playerCountLabel,
+	)
+
+	gameStateLabel := widget.NewLabel("游戏状态: 未开始")
+	uptimeLabel = widget.NewLabel("游戏时间: 0s")
+	statsBox2 := container.NewVBox(
+		gameStateLabel,
+		uptimeLabel,
+	)
+
+	// Combine controls and stats with padding
+	controlsContainer := container.NewHBox(
+		buttonBox,
+		widget.NewLabel("    "), // Add some spacing
+		statsBox,
+		widget.NewLabel("    "), // Add some spacing
+		statsBox2,
+	)
 
 	// Log output
 	logEntry = newScrollableLabel("")
@@ -142,7 +180,7 @@ func CreateWindow() {
 	// Main layout
 	mainContainer := container.NewVBox(
 		widget.NewCard("Server Configuration", "", configBox),
-		widget.NewCard("Controls", "", buttonBox),
+		widget.NewCard("Controls", "", controlsContainer),
 		widget.NewCard("Server Logs", "", logScroll),
 	)
 

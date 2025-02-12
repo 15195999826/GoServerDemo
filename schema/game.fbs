@@ -7,6 +7,17 @@ enum MessageType:byte {
     Heartbeat = 3  // 添加心跳消息类型
 }
 
+enum PlayerCommandType:byte { 
+    // 向上移动
+    MoveUp = 0,
+    // 向下移动
+    MoveDown = 1,
+    // 向左移动
+    MoveLeft = 2,
+    // 向右移动
+    MoveRight = 3,
+}
+
 table Vector2 {
     x:float;
     y:float;
@@ -26,6 +37,11 @@ table GameState {
 table Message {
     type:MessageType;
     payload:[ubyte];
+}
+
+table PlayerInput {
+    frame:int;
+    command_type:PlayerCommandType;
 }
 
 root_type Message;
