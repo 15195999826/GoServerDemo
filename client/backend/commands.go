@@ -1,11 +1,11 @@
-package main
+package backend
 
 import (
 	"gameproject/fb"
 	"log"
 
 	flatbuffers "github.com/google/flatbuffers/go"
-	kcp "github.com/xtaci/kcp-go/v5"
+	"github.com/xtaci/kcp-go"
 )
 
 type CommandSender struct {
