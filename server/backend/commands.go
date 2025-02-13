@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"fmt"
 	"gameproject/fb"
 	"log"
 	"time"
@@ -72,6 +73,11 @@ func (ms *ServerCommandSender) SendEnterRoomMessage(player *Player, server *Game
 	fb.S2CEnterRoomAddHeartbeatInterval(builder, int32(server.config.HeartbeatInterval.Seconds()))
 	enterRoom := fb.S2CEnterRoomEnd(builder)
 
+	// 检查创建结果
+	if enterRoom == 0 {
+		return fmt.Errorf("failed to create S2CEnterRoom message")
+	}
+
 	// 创建 S2CCommand
 	fb.S2CCommandStart(builder)
 	fb.S2CCommandAddCommand(builder, fb.ServerCommandS2C_COMMAND_ENTERROOM)
@@ -82,6 +88,28 @@ func (ms *ServerCommandSender) SendEnterRoomMessage(player *Player, server *Game
 	builder.Finish(command)
 	data := builder.FinishedBytes()
 
+	// 验证序列化的数据
+	if len(data) == 0 {
+		return fmt.Errorf("serialized data is empty")
+	}
+
+	// 反序列化data， 检查数据
+	s2cCommand := fb.GetRootAsS2CCommand(data, 0)
+	if s2cCommand == nil {
+		return fmt.Errorf("failed to parse serialized S2CCommand")
+	}
+
+	// 验证消息体是否可以正确解析
+	if s2cCommand.BodyBytes() == nil {
+		return fmt.Errorf("S2CCommand body is nil")
+	}
+	bodyEnterRoom := fb.GetRootAsS2CEnterRoom(s2cCommand.BodyBytes(), 0)
+	if bodyEnterRoom == nil {
+		return fmt.Errorf("failed to parse S2CEnterRoom from body")
+	}
+
+	log.Printf("Pass All Checks")
+	log.Printf("Enter room, player id: %d, heartbeat interval: %v, time sync times: %d", bodyEnterRoom.PlayerId(), bodyEnterRoom.HeartbeatInterval(), bodyEnterRoom.TimeSyncTimes())
 	_, err := player.conn.Write(data)
 	if err != nil {
 		log.Printf("Failed to send enter room message to player %d: %v", player.id, err)
