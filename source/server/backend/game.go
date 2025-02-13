@@ -26,14 +26,13 @@ func (s GameState) String() string {
 }
 
 type GameServer struct {
-	players       map[int]*Player
-	nextID        int
-	listener      *kcp.Listener
-	config        *ServerConfig
-	ctx           context.Context
-	cancel        context.CancelFunc
-	wg            sync.WaitGroup
-	commandSender *ServerCommandSender
+	players  map[int]*Player
+	nextID   int
+	listener *kcp.Listener
+	config   *ServerConfig
+	ctx      context.Context
+	cancel   context.CancelFunc
+	wg       sync.WaitGroup
 
 	gameState GameState
 }
@@ -67,7 +66,6 @@ func NewGameServer() *GameServer {
 		gameState: Room,
 	}
 
-	server.commandSender = NewServerCommandSender()
 	return server
 }
 
@@ -104,7 +102,7 @@ func (s *GameServer) Configure(port, tickRate, maxPlayers, heartbeat, timeSysncT
 
 	s.config = &ServerConfig{
 		Port:                     p,
-		TickRate:                 time.Duration(t) * time.Millisecond,
+		TickRate:                 time.Second / time.Duration(t),
 		MaxPlayers:               m,
 		HeartbeatInterval:        time.Duration(h) * time.Second,
 		TimeSyncTimes:            ts,
@@ -133,8 +131,8 @@ func (s *GameServer) Start() error {
 
 		for {
 			select {
-			case <-ticker.C:
-				s.update()
+			case tickTime := <-ticker.C:
+				s.tick(tickTime)
 			case <-s.ctx.Done():
 				return
 			}
@@ -193,7 +191,7 @@ func (s *GameServer) Start() error {
 				s.players[player.id] = player
 
 				// 创建进入房间消息，并发送给该玩家
-				s.commandSender.SendEnterRoomMessage(player, s)
+				SendEnterRoomMessage(player, s)
 				// _, err := player.conn.Write(data)
 				// if err != nil {
 				// 	log.Printf("Failed to send update to player %d: %v", player.id, err)
@@ -240,7 +238,9 @@ func (s *GameServer) checkHeartbeats() {
 	}
 }
 
-func (s *GameServer) update() {
+func (s *GameServer) tick(tickTime time.Time) {
+	// 打印tickTime time.Time, 通道中拿取的时间跟timeNow可能存在1s的误差
+	// log.Printf("Tick at %v, TimeNow: %v", tickTime.UnixMilli(), time.Now().UnixMilli())
 	switch s.gameState {
 	case Room:
 		// 如果房间人数满了，则开始游戏
@@ -253,7 +253,7 @@ func (s *GameServer) update() {
 				}
 			}
 			if allSynced {
-				s.commandSender.SendStartEnterGame(s)
+				SendStartEnterGame(s)
 				s.gameState = WaitPlayersReady
 			}
 		}
@@ -267,7 +267,7 @@ func (s *GameServer) update() {
 			}
 		}
 		if allReady {
-			s.commandSender.SendStartGame(s)
+			SendStartGame(s)
 			s.gameState = Game
 		}
 	case Game:
@@ -363,9 +363,9 @@ func (s *GameServer) handlePlayer(player *Player) {
 		switch c2sCommand.Command() {
 		case fb.ClientCommandC2S_COMMAND_PING:
 			// 返回Pong
-			s.commandSender.SendPong(player)
+			SendPong(player)
 		case fb.ClientCommandC2S_COMMAND_REQUESTTIME:
-			s.commandSender.SendResponseTime(player)
+			SendResponseTime(player)
 			player.timeSyncedTimes++
 		case fb.ClientCommandC2S_COMMAND_PLAYERINFO:
 			// Todo: 更新玩家信息

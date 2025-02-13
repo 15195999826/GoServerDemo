@@ -91,8 +91,8 @@ func CreateWindow() {
 
 	config := &ServerConfig{
 		Port:                     "12345",
-		TickRate:                 "50",
-		MaxPlayers:               "100",
+		TickRate:                 "20",
+		MaxPlayers:               "2",
 		HeartbeatInterval:        "5",
 		TimeSyncTimes:            "10",
 		AppointedServerTimeDelay: "3",

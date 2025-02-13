@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"gameproject/client/backend"
+	"gameproject/source/client/backend"
 )
 
 func main() {

@@ -1,8 +1,8 @@
 package main
 
 import (
-	"gameproject/server/backend"
-	"gameproject/server/gui"
+	"gameproject/source/server/backend"
+	"gameproject/source/server/gui"
 )
 
 func main() {

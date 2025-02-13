@@ -6,7 +6,7 @@ if not exist "bin" mkdir bin
 
 :: Build client
 echo Building client...
-go build -o bin/client.exe ./client
+go build -o bin/client.exe ./source/client
 if %ERRORLEVEL% NEQ 0 (
     echo Client build failed!
     pause
@@ -15,7 +15,7 @@ if %ERRORLEVEL% NEQ 0 (
 
 :: Build server
 echo Building server...
-go build -o bin/server.exe ./server
+go build -o bin/server.exe ./source/server
 if %ERRORLEVEL% NEQ 0 (
     echo Server build failed!
     pause
