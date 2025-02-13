@@ -44,12 +44,15 @@ type GameClient struct {
 
 	desiredGameStartTime int64
 	gameStartTime        time.Time
+
+	logicFrame int
 }
 
 func NewGameClient() *GameClient {
 	client := &GameClient{
 		gameState:            Invalid,
 		alreadyTimeSyncTimes: 0,
+		logicFrame:           0,
 	}
 	return client
 }
@@ -91,7 +94,7 @@ func (c *GameClient) Start() {
 			fmt.Scanln()
 			return
 		case <-heartbeatTicker.C:
-			SendPing(c.conn)
+			sendPing(c.conn)
 		case tickTime := <-gameTicker.C:
 			c.tick(tickTime)
 		}
@@ -147,7 +150,7 @@ func (c *GameClient) handleMessage(s2cCommand *fb.S2CCommand) (err error) {
 		// 模拟加载， 随机延迟后发送消息
 		go func() {
 			time.Sleep(time.Duration(0.5+float64(rand.IntN(2))) * time.Second)
-			SendGameLoaded(c.conn)
+			sendGameLoaded(c.conn)
 		}()
 	case fb.ServerCommandS2C_COMMAND_STARTGAME:
 		startGame := fb.GetRootAsS2CStartGame(s2cCommand.BodyBytes(), 0)
@@ -180,7 +183,7 @@ func (c *GameClient) tick(tickTime time.Time) {
 	case Invalid:
 	case Room:
 		if c.alreadyTimeSyncTimes < c.timeSyncedTimes {
-			SendRequestTime(c.conn)
+			sendRequestTime(c.conn)
 			c.lastSendTime = time.Now()
 		}
 	case GameCountDown:
@@ -204,4 +207,8 @@ func (c *GameClient) Close() {
 		c.conn.Close()
 		c.conn = nil
 	}
+}
+
+func (c *GameClient) SendMovement(dx, dy int) {
+	sendMovement(c.conn, c.logicFrame, dx, dy)
 }

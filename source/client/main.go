@@ -34,6 +34,12 @@ func main() {
 		func() {
 			go client.Start()
 		},
+		// Movement callback
+		func(dx, dy int) {
+			if client != nil {
+				client.SendMovement(dx, dy)
+			}
+		},
 	)
 
 	mainWindow.Show()

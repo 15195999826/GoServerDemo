@@ -47,7 +47,7 @@ table S2CStartGame {
 
 table S2CPlyaerInput {
     player_id:int;
-    input:fb.PlayerInput;
+    inputs:[fb.PlayerInput];
 }
 
 table S2CWorldSync {

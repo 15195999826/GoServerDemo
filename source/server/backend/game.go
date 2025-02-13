@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"gameproject/fb"
+	"gameproject/source/gametypes"
 	"log"
 	"strconv"
 	"sync"
@@ -17,12 +18,13 @@ type GameState int
 const (
 	Room GameState = iota
 	WaitPlayersReady
+	GameCountDown // 游戏开始前倒计时阶段
 	Game
 	GameOver
 )
 
 func (s GameState) String() string {
-	return [...]string{"Room", "WaitPlayersReady", "Game", "GameOver"}[s]
+	return [...]string{"Room", "WaitPlayersReady", "GameCountDown", "Game", "GameOver"}[s]
 }
 
 type GameServer struct {
@@ -34,12 +36,15 @@ type GameServer struct {
 	cancel   context.CancelFunc
 	wg       sync.WaitGroup
 
-	gameState GameState
+	gameState     GameState
+	appointedTime int64
+	frameCounter  int
+	logicFrame    int
 }
 
 type ServerConfig struct {
 	Port                     int
-	TickRate                 time.Duration
+	TickRate                 int
 	MaxPlayers               int
 	HeartbeatInterval        time.Duration
 	TimeSyncTimes            int
@@ -53,6 +58,9 @@ type Player struct {
 	timeSyncedTimes int
 	isReady         bool
 	position        struct{ x, y float32 }
+
+	// 玩家输入队列
+	inputQueue []gametypes.PlayerInput
 }
 
 func NewGameServer() *GameServer {
@@ -102,7 +110,7 @@ func (s *GameServer) Configure(port, tickRate, maxPlayers, heartbeat, timeSysncT
 
 	s.config = &ServerConfig{
 		Port:                     p,
-		TickRate:                 time.Second / time.Duration(t),
+		TickRate:                 t,
 		MaxPlayers:               m,
 		HeartbeatInterval:        time.Duration(h) * time.Second,
 		TimeSyncTimes:            ts,
@@ -126,7 +134,7 @@ func (s *GameServer) Start() error {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		ticker := time.NewTicker(s.config.TickRate)
+		ticker := time.NewTicker(time.Second / time.Duration(s.config.TickRate))
 		defer ticker.Stop()
 
 		for {
@@ -267,11 +275,38 @@ func (s *GameServer) tick(tickTime time.Time) {
 			}
 		}
 		if allReady {
-			SendStartGame(s)
+			// 计算约定的游戏开始时间（当前时间 + 延迟时间）
+			s.appointedTime = time.Now().Add(s.config.AppointedServerTimeDelay).UnixMilli()
+			sendStartGame(s)
+			s.gameState = GameCountDown
+		}
+	case GameCountDown:
+		// 检查是否到达约定的游戏开始时间
+		if tickTime.UnixMilli() >= s.appointedTime {
+			log.Println("Game start At:%v, AppointedTime:%v", tickTime.UnixMilli(), s.appointedTime)
 			s.gameState = Game
+			s.frameCounter = 0
+			s.logicFrame = 0
 		}
 	case Game:
 		// 游戏逻辑， 服务端目前只做指令转发
+		s.frameCounter++
+		if s.frameCounter == s.config.TickRate*2 {
+			s.logicFrame++
+			s.frameCounter = 0
+		}
+
+		// 转发玩家输入
+		for _, player := range s.players {
+			if len(player.inputQueue) == 0 {
+				continue
+			}
+			// 只转发那些逻辑帧小于等于当前逻辑帧的输入
+			for _, input := range player.inputQueue {
+			}
+			player.inputQueue = player.inputQueue[:0]
+		}
+
 	default:
 		return
 	}
@@ -373,7 +408,13 @@ func (s *GameServer) handlePlayer(player *Player) {
 			// 更新玩家准备状态
 			player.isReady = true
 		case fb.ClientCommandC2S_COMMAND_PLAYERINPUT:
-			// Todo: 玩家输入存入缓存队列
+			// 玩家输入存入缓存队列
+			c2sinput := fb.GetRootAsPlayerInput(c2sCommand.BodyBytes(), 0)
+			playerInput := gametypes.PlayerInput{
+				LogicFrame:  c2sinput.Frame(),
+				CommandType: gametypes.ConvertFBPlayerCommandType(c2sinput.CommandType()),
+			}
+			player.inputQueue = append(player.inputQueue, playerInput)
 		default:
 			log.Printf("Unknown command from player %d: %d", player.id, c2sCommand.Command())
 		}

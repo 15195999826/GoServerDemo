@@ -90,15 +90,12 @@ func SendStartEnterGame(server *GameServer) error {
 	return nil
 }
 
-func SendStartGame(server *GameServer) error {
+func sendStartGame(server *GameServer) error {
 	builder := flatbuffers.NewBuilder(1024)
-
-	// 计算约定的游戏开始时间（当前时间 + 延迟时间）
-	appointedTime := time.Now().Add(server.config.AppointedServerTimeDelay).UnixMilli()
 
 	// 创建 S2CStartGame
 	fb.S2CStartGameStart(builder)
-	fb.S2CStartGameAddAppointedServerTime(builder, appointedTime)
+	fb.S2CStartGameAddAppointedServerTime(builder, server.appointedTime)
 	startGameOffset := fb.S2CStartGameEnd(builder)
 
 	builder.Finish(startGameOffset)
@@ -116,7 +113,7 @@ func SendStartGame(server *GameServer) error {
 		}
 	}
 
-	log.Printf("Sent start game message to all players, game will start at Unix time: %d", appointedTime)
+	log.Printf("Sent start game message to all players, game will start at Unix time: %d", server.appointedTime)
 	return nil
 }
 

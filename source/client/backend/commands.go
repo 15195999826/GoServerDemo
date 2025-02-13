@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"fmt"
 	"gameproject/fb"
 	"log"
 
@@ -30,7 +31,7 @@ func createC2SCommand(command fb.ClientCommand, body []byte) []byte {
 	return builder.FinishedBytes()
 }
 
-func SendPing(conn *kcp.UDPSession) error {
+func sendPing(conn *kcp.UDPSession) error {
 	data := createC2SCommand(fb.ClientCommandC2S_COMMAND_PING, nil)
 
 	_, err := conn.Write(data)
@@ -41,7 +42,7 @@ func SendPing(conn *kcp.UDPSession) error {
 	return nil
 }
 
-func SendRequestTime(conn *kcp.UDPSession) error {
+func sendRequestTime(conn *kcp.UDPSession) error {
 	data := createC2SCommand(fb.ClientCommandC2S_COMMAND_REQUESTTIME, nil)
 
 	_, err := conn.Write(data)
@@ -52,12 +53,51 @@ func SendRequestTime(conn *kcp.UDPSession) error {
 	return nil
 }
 
-func SendGameLoaded(conn *kcp.UDPSession) error {
+func sendGameLoaded(conn *kcp.UDPSession) error {
 	data := createC2SCommand(fb.ClientCommandC2S_COMMAND_GAMELOADED, nil)
 
 	_, err := conn.Write(data)
 	if err != nil {
 		log.Printf("Failed to send game loaded message: %v", err)
+		return err
+	}
+	return nil
+}
+
+func sendMovement(conn *kcp.UDPSession, logicFrame, x, y int) error {
+	if x == 0 && y == 0 {
+		// 错误的输入
+		err := fmt.Errorf("错误的指令")
+		return err
+	}
+
+	var inputType fb.PlayerCommandType
+
+	if x > 0 {
+		inputType = fb.PlayerCommandTypeMoveRight
+	} else if x < 0 {
+		inputType = fb.PlayerCommandTypeMoveLeft
+	} else if y > 0 {
+		inputType = fb.PlayerCommandTypeMoveUp
+	} else if y < 0 {
+		inputType = fb.PlayerCommandTypeMoveDown
+	}
+
+	builder := flatbuffers.NewBuilder(1024)
+
+	fb.PlayerInputStart(builder)
+	fb.PlayerInputAddFrame(builder, int32(logicFrame))
+	fb.PlayerInputAddCommandType(builder, inputType)
+	inputOffset := fb.PlayerInputEnd(builder)
+
+	builder.Finish(inputOffset)
+	bodyBytes := builder.FinishedBytes()
+
+	data := createC2SCommand(fb.ClientCommandC2S_COMMAND_PLAYERINPUT, bodyBytes)
+
+	_, err := conn.Write(data)
+	if err != nil {
+		log.Printf("Failed to send movement message: %v", err)
 		return err
 	}
 	return nil

@@ -23,13 +23,14 @@ var (
 )
 
 type GameWindow struct {
-	window    fyne.Window
-	gameMap   *GameMap
-	mapLabel  *widget.Label
-	logEntry  *widget.Entry
-	nickname  *widget.Entry
-	onConnect func() error
-	onStart   func()
+	window     fyne.Window
+	gameMap    *GameMap
+	mapLabel   *widget.Label
+	logEntry   *widget.Entry
+	nickname   *widget.Entry
+	onConnect  func() error
+	onStart    func()
+	onMovement func(dx, dy int) // Add movement callback
 }
 
 func NewGameWindow() *GameWindow {
@@ -64,22 +65,30 @@ func NewGameWindow() *GameWindow {
 
 	// Movement buttons
 	upBtn := widget.NewButton("↑", func() {
-		gw.gameMap.GUIPlayer.Move(0, -1, gw.gameMap.Width, gw.gameMap.Height)
+		if gw.onMovement != nil {
+			gw.onMovement(0, -1)
+		}
 		gw.updateMap()
 	})
 
 	downBtn := widget.NewButton("↓", func() {
-		gw.gameMap.GUIPlayer.Move(0, 1, gw.gameMap.Width, gw.gameMap.Height)
+		if gw.onMovement != nil {
+			gw.onMovement(0, 1)
+		}
 		gw.updateMap()
 	})
 
 	leftBtn := widget.NewButton("←", func() {
-		gw.gameMap.GUIPlayer.Move(-1, 0, gw.gameMap.Width, gw.gameMap.Height)
+		if gw.onMovement != nil {
+			gw.onMovement(-1, 0)
+		}
 		gw.updateMap()
 	})
 
 	rightBtn := widget.NewButton("→", func() {
-		gw.gameMap.GUIPlayer.Move(1, 0, gw.gameMap.Width, gw.gameMap.Height)
+		if gw.onMovement != nil {
+			gw.onMovement(1, 0)
+		}
 		gw.updateMap()
 	})
 
@@ -169,9 +178,10 @@ func (gw *GameWindow) Show() {
 	gw.window.ShowAndRun()
 }
 
-func (gw *GameWindow) SetCallbacks(onConnect func() error, onStart func()) {
+func (gw *GameWindow) SetCallbacks(onConnect func() error, onStart func(), onMovement func(dx, dy int)) {
 	gw.onConnect = onConnect
 	gw.onStart = onStart
+	gw.onMovement = onMovement
 }
 
 func (gw *GameWindow) GetNickname() string {
