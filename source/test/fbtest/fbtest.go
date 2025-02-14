@@ -3,9 +3,44 @@ package fbtest
 import (
 	"fmt"
 	"gameproject/fb"
+	"gameproject/source/gametypes"
+	"gameproject/source/serialization"
 
 	flatbuffers "github.com/google/flatbuffers/go"
 )
+
+func createCommand(command fb.ServerCommand, status fb.S2CStatus, code int64, message string, body []byte) []byte {
+	builder := flatbuffers.NewBuilder(1024)
+
+	// 创建message字符串
+	var messageOffset flatbuffers.UOffsetT
+	if message != "" {
+		messageOffset = builder.CreateString(message)
+	}
+
+	// 创建body字节数组
+	var bodyOffset flatbuffers.UOffsetT
+	if body != nil {
+		bodyOffset = builder.CreateByteVector(body)
+	}
+
+	// 开始构建S2CCommand
+	fb.S2CCommandStart(builder)
+	fb.S2CCommandAddCommand(builder, command)
+	fb.S2CCommandAddStatus(builder, status)
+	fb.S2CCommandAddCode(builder, code)
+	if message != "" {
+		fb.S2CCommandAddMessage(builder, messageOffset)
+	}
+	if body != nil {
+		fb.S2CCommandAddBody(builder, bodyOffset)
+	}
+	rootOffset := fb.S2CCommandEnd(builder)
+
+	// 完成构建
+	builder.Finish(rootOffset)
+	return builder.FinishedBytes()
+}
 
 func SerializeMessage() []byte {
 	// 1. 首先序列化内部的S2CEnterRoom
@@ -51,35 +86,18 @@ func DeserializeMessage(buf []byte) {
 	}
 }
 
-func createCommand(command fb.ServerCommand, status fb.S2CStatus, code int64, message string, body []byte) []byte {
-	builder := flatbuffers.NewBuilder(1024)
-
-	// 创建message字符串
-	var messageOffset flatbuffers.UOffsetT
-	if message != "" {
-		messageOffset = builder.CreateString(message)
+func TestPlayerInput() {
+	testData := gametypes.PlayerInput{
+		ID:          12345,
+		LogicFrame:  100,
+		CommandType: gametypes.MoveDown,
 	}
+	// 序列化
+	data := serialization.SerializePlayerInput(&testData)
+	fmt.Println("Serialized data length:", len(data))
 
-	// 创建body字节数组
-	var bodyOffset flatbuffers.UOffsetT
-	if body != nil {
-		bodyOffset = builder.CreateByteVector(body)
-	}
-
-	// 开始构建S2CCommand
-	fb.S2CCommandStart(builder)
-	fb.S2CCommandAddCommand(builder, command)
-	fb.S2CCommandAddStatus(builder, status)
-	fb.S2CCommandAddCode(builder, code)
-	if message != "" {
-		fb.S2CCommandAddMessage(builder, messageOffset)
-	}
-	if body != nil {
-		fb.S2CCommandAddBody(builder, bodyOffset)
-	}
-	rootOffset := fb.S2CCommandEnd(builder)
-
-	// 完成构建
-	builder.Finish(rootOffset)
-	return builder.FinishedBytes()
+	// 反序列化
+	fmt.Println("\nDeserialized data:")
+	deserializedData := serialization.DeserializePlayerInput(data)
+	fmt.Printf("LogicFrame: %v\n", deserializedData)
 }

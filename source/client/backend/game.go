@@ -3,6 +3,8 @@ package backend
 import (
 	"fmt"
 	"gameproject/fb"
+	"gameproject/source/gametypes"
+	"gameproject/source/serialization"
 	"log"
 	"runtime/debug"
 	"time"
@@ -26,6 +28,11 @@ func (s GameState) String() string {
 	return [...]string{"Invalid", "Room", "GameCountDown", "Game", "GameOver"}[s]
 }
 
+type Player struct {
+	id       int
+	position gametypes.Vector2Int
+}
+
 type GameClient struct {
 	conn *kcp.UDPSession
 
@@ -41,10 +48,12 @@ type GameClient struct {
 	gameState GameState
 
 	playerID int
+	players  map[int]*Player
 
 	desiredGameStartTime int64
 	gameStartTime        time.Time
 
+	gameMap    *gametypes.GameMap
 	logicFrame int
 }
 
@@ -53,7 +62,10 @@ func NewGameClient() *GameClient {
 		gameState:            Invalid,
 		alreadyTimeSyncTimes: 0,
 		logicFrame:           0,
+		players:              make(map[int]*Player),
 	}
+
+	client.gameMap = gametypes.NewGameMap(10, 10)
 	return client
 }
 
@@ -147,6 +159,21 @@ func (c *GameClient) handleMessage(s2cCommand *fb.S2CCommand) (err error) {
 		c.gameState = Room
 
 	case fb.ServerCommandS2C_COMMAND_STARTENTERGAME:
+		startEntetGame := serialization.DeserializeS2CStartEnterGame(s2cCommand.BodyBytes())
+		log.Printf("[StartEnterGame] players: %v", startEntetGame.Players)
+
+		// 创建客户端本地角色
+		for _, player := range startEntetGame.Players {
+			// 检查是否已经存在， 存在的话存在逻辑错误， 抛出错误
+			if _, ok := c.players[player.ID]; ok {
+				return fmt.Errorf("Player %d already exists, current players: %v", player.ID, c.players)
+			}
+			c.players[player.ID] = &Player{
+				id:       player.ID,
+				position: player.Position,
+			}
+		}
+
 		// 模拟加载， 随机延迟后发送消息
 		go func() {
 			time.Sleep(time.Duration(0.5+float64(rand.IntN(2))) * time.Second)
@@ -193,7 +220,7 @@ func (c *GameClient) tick(tickTime time.Time) {
 		}
 	case Game:
 		// Todo: 在UE中实现时， 使用游戏时间累加计算， 在服务端使用系统时间
-		log.Printf("[%v]Game running...", tickTime.UnixMilli()-c.gameStartTime.UnixMilli())
+		// log.Printf("[%v]Game running...", tickTime.UnixMilli()-c.gameStartTime.UnixMilli())
 
 	case GameOver:
 	default:

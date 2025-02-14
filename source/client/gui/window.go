@@ -24,7 +24,7 @@ var (
 
 type GameWindow struct {
 	window     fyne.Window
-	gameMap    *GameMap
+	gameMap    *GUIGameMap
 	mapLabel   *widget.Label
 	logEntry   *widget.Entry
 	nickname   *widget.Entry

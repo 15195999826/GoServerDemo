@@ -11,7 +11,18 @@ enum PlayerCommandType:byte {
     MoveRight = 3,
 }
 
+table Vector2Int {
+    x:int;
+    y:int;
+}
+
 table PlayerInput {
+    player_id:int;
     frame:int;
     command_type:PlayerCommandType;
+}
+
+table Player {
+    player_id:int;
+    position:fb.Vector2Int;
 }

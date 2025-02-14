@@ -6,6 +6,7 @@ import (
 	"gameproject/fb"
 	"gameproject/source/gametypes"
 	"log"
+	"math/rand/v2"
 	"strconv"
 	"sync"
 	"time"
@@ -38,8 +39,11 @@ type GameServer struct {
 
 	gameState     GameState
 	appointedTime int64
-	frameCounter  int
-	logicFrame    int
+
+	gameMap      *gametypes.GameMap
+	frameCounter int
+	logicFrame   int
+	inputQueue   []gametypes.PlayerInput
 }
 
 type ServerConfig struct {
@@ -57,10 +61,7 @@ type Player struct {
 	lastActive      time.Time
 	timeSyncedTimes int
 	isReady         bool
-	position        struct{ x, y float32 }
-
-	// 玩家输入队列
-	inputQueue []gametypes.PlayerInput
+	position        gametypes.Vector2Int
 }
 
 func NewGameServer() *GameServer {
@@ -72,6 +73,7 @@ func NewGameServer() *GameServer {
 		ctx:       ctx,
 		cancel:    cancel,
 		gameState: Room,
+		gameMap:   gametypes.NewGameMap(10, 10),
 	}
 
 	return server
@@ -199,7 +201,7 @@ func (s *GameServer) Start() error {
 				s.players[player.id] = player
 
 				// 创建进入房间消息，并发送给该玩家
-				SendEnterRoomMessage(player, s)
+				sendEnterRoomMessage(player, s)
 				// _, err := player.conn.Write(data)
 				// if err != nil {
 				// 	log.Printf("Failed to send update to player %d: %v", player.id, err)
@@ -261,7 +263,9 @@ func (s *GameServer) tick(tickTime time.Time) {
 				}
 			}
 			if allSynced {
-				SendStartEnterGame(s)
+				// 给每个玩家随机一个不重复的出生位置
+				s.assignPlayerPositions()
+				sendStartEnterGame(s)
 				s.gameState = WaitPlayersReady
 			}
 		}
@@ -283,7 +287,7 @@ func (s *GameServer) tick(tickTime time.Time) {
 	case GameCountDown:
 		// 检查是否到达约定的游戏开始时间
 		if tickTime.UnixMilli() >= s.appointedTime {
-			log.Println("Game start At:%v, AppointedTime:%v", tickTime.UnixMilli(), s.appointedTime)
+			log.Printf("Game start At:%v, AppointedTime:%v", tickTime.UnixMilli(), s.appointedTime)
 			s.gameState = Game
 			s.frameCounter = 0
 			s.logicFrame = 0
@@ -291,20 +295,38 @@ func (s *GameServer) tick(tickTime time.Time) {
 	case Game:
 		// 游戏逻辑， 服务端目前只做指令转发
 		s.frameCounter++
+		logicFrameUpdated := false
 		if s.frameCounter == s.config.TickRate*2 {
 			s.logicFrame++
 			s.frameCounter = 0
+			logicFrameUpdated = true
 		}
 
-		// 转发玩家输入
-		for _, player := range s.players {
-			if len(player.inputQueue) == 0 {
-				continue
+		// 筛选当前需要执行的命令， 服务端执行简单逻辑， 目前只计算位置， Todo: 可以考虑同步玩家位置状态做客户端校验
+		var validInputs []gametypes.PlayerInput
+		var remainingInputs []gametypes.PlayerInput
+
+		for _, input := range s.inputQueue {
+			if input.LogicFrame <= s.logicFrame {
+				validInputs = append(validInputs, input)
+			} else {
+				remainingInputs = append(remainingInputs, input)
 			}
-			// 只转发那些逻辑帧小于等于当前逻辑帧的输入
-			for _, input := range player.inputQueue {
-			}
-			player.inputQueue = player.inputQueue[:0]
+		}
+
+		s.inputQueue = remainingInputs
+		if len(remainingInputs) != 0 {
+			// 打印剩余输入
+			log.Printf("[%d] 异常剩余玩家输入 remaining inputs: %v", s.logicFrame, remainingInputs)
+		}
+
+		// 服务端更新玩家位置
+		if len(validInputs) != 0 {
+			// Todo: 服务端更新玩家位置, 以后实现
+		}
+
+		if logicFrameUpdated {
+			sendWorldSync(s)
 		}
 
 	default:
@@ -398,9 +420,9 @@ func (s *GameServer) handlePlayer(player *Player) {
 		switch c2sCommand.Command() {
 		case fb.ClientCommandC2S_COMMAND_PING:
 			// 返回Pong
-			SendPong(player)
+			sendPong(player)
 		case fb.ClientCommandC2S_COMMAND_REQUESTTIME:
-			SendResponseTime(player)
+			sendResponseTime(player)
 			player.timeSyncedTimes++
 		case fb.ClientCommandC2S_COMMAND_PLAYERINFO:
 			// Todo: 更新玩家信息
@@ -411,12 +433,53 @@ func (s *GameServer) handlePlayer(player *Player) {
 			// 玩家输入存入缓存队列
 			c2sinput := fb.GetRootAsPlayerInput(c2sCommand.BodyBytes(), 0)
 			playerInput := gametypes.PlayerInput{
-				LogicFrame:  c2sinput.Frame(),
+				LogicFrame:  int(c2sinput.Frame()),
 				CommandType: gametypes.ConvertFBPlayerCommandType(c2sinput.CommandType()),
 			}
-			player.inputQueue = append(player.inputQueue, playerInput)
+			s.inputQueue = append(s.inputQueue, playerInput)
+			// Todo: 目前直接转发, 以后考虑是否增加跟当前逻辑帧的校验关系
+			sendPlayerInput(s, &playerInput)
 		default:
 			log.Printf("Unknown command from player %d: %d", player.id, c2sCommand.Command())
+		}
+	}
+}
+
+func (s *GameServer) assignPlayerPositions() {
+	positions := make(map[int]*gametypes.Vector2Int)
+	availablePositions := make([]gametypes.Vector2Int, 0)
+
+	// Create list of all possible positions
+	// Excluding edges for better gameplay
+	for x := 1; x < s.gameMap.MapData.Width-1; x++ {
+		for y := 1; y < s.gameMap.MapData.Height-1; y++ {
+			availablePositions = append(availablePositions, gametypes.Vector2Int{X: x, Y: y})
+		}
+	}
+
+	// Randomly assign positions to players
+	for playerID := range s.players {
+		if len(availablePositions) == 0 {
+			log.Printf("Warning: No more positions available for player %d", playerID)
+			continue
+		}
+
+		// Pick random position from available positions
+		idx := rand.IntN(len(availablePositions))
+		pos := availablePositions[idx]
+
+		// Remove used position by swapping with last element and shrinking slice
+		availablePositions[idx] = availablePositions[len(availablePositions)-1]
+		availablePositions = availablePositions[:len(availablePositions)-1]
+
+		positions[playerID] = &gametypes.Vector2Int{X: pos.X, Y: pos.Y}
+		log.Printf("Assigned position (%v, %v) to player %d", pos.X, pos.Y, playerID)
+	}
+
+	// 更新玩家位置
+	for playerID, position := range positions {
+		if player, ok := s.players[playerID]; ok {
+			player.position = *position
 		}
 	}
 }

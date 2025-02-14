@@ -2,13 +2,48 @@ package backend
 
 import (
 	"gameproject/fb"
+	"gameproject/source/gametypes"
+	"gameproject/source/serialization"
 	"log"
 	"time"
 
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
-func SendPong(player *Player) error {
+func createS2CCommand(command fb.ServerCommand, status fb.S2CStatus, code int64, message string, body []byte) []byte {
+	builder := flatbuffers.NewBuilder(1024)
+
+	// 创建message字符串
+	var messageOffset flatbuffers.UOffsetT
+	if message != "" {
+		messageOffset = builder.CreateString(message)
+	}
+
+	// 创建body字节数组
+	var bodyOffset flatbuffers.UOffsetT
+	if body != nil {
+		bodyOffset = builder.CreateByteVector(body)
+	}
+
+	// 开始构建S2CCommand
+	fb.S2CCommandStart(builder)
+	fb.S2CCommandAddCommand(builder, command)
+	fb.S2CCommandAddStatus(builder, status)
+	fb.S2CCommandAddCode(builder, code)
+	if message != "" {
+		fb.S2CCommandAddMessage(builder, messageOffset)
+	}
+	if body != nil {
+		fb.S2CCommandAddBody(builder, bodyOffset)
+	}
+	rootOffset := fb.S2CCommandEnd(builder)
+
+	// 完成构建
+	builder.Finish(rootOffset)
+	return builder.FinishedBytes()
+}
+
+func sendPong(player *Player) error {
 	data := createS2CCommand(fb.ServerCommandS2C_COMMAND_PONG, fb.S2CStatusS2C_STATUS_SUCCESS, 0, "", nil)
 	_, err := player.conn.Write(data)
 	if err != nil {
@@ -18,7 +53,7 @@ func SendPong(player *Player) error {
 	return nil
 }
 
-func SendResponseTime(player *Player) error {
+func sendResponseTime(player *Player) error {
 	builder := flatbuffers.NewBuilder(1024)
 
 	// 创建 S2CResponseTime
@@ -40,8 +75,8 @@ func SendResponseTime(player *Player) error {
 	return nil
 }
 
-// SendEnterRoomMessage 发送进入房间消息
-func SendEnterRoomMessage(player *Player, server *GameServer) error {
+// sendEnterRoomMessage 发送进入房间消息
+func sendEnterRoomMessage(player *Player, server *GameServer) error {
 	builder := flatbuffers.NewBuilder(1024)
 
 	// 创建 S2CEnterRoom
@@ -64,16 +99,20 @@ func SendEnterRoomMessage(player *Player, server *GameServer) error {
 	return nil
 }
 
-func SendStartEnterGame(server *GameServer) error {
-	builder := flatbuffers.NewBuilder(1024)
+func sendStartEnterGame(server *GameServer) error {
+	serializePlayers := make([]gametypes.SerializePlayer, 0)
+	for _, player := range server.players {
+		serializePlayers = append(serializePlayers, gametypes.SerializePlayer{
+			ID:       player.id,
+			Position: player.position,
+		})
+	}
 
-	// 创建 S2CStartEnterGame
-	fb.S2CStartEnterGameStart(builder)
-	// Todo: 告知客户端其他所有玩家的数据
-	startEnterGameOffset := fb.S2CStartEnterGameEnd(builder)
+	startEnterGame := gametypes.StartEnterGame{
+		Players: serializePlayers,
+	}
 
-	builder.Finish(startEnterGameOffset)
-	bodyBytes := builder.FinishedBytes()
+	bodyBytes := serialization.SerializeS2CStartEnterGame(&startEnterGame)
 	// 创建 S2CCommand
 	data := createS2CCommand(fb.ServerCommandS2C_COMMAND_STARTENTERGAME, fb.S2CStatusS2C_STATUS_SUCCESS, 0, "", bodyBytes)
 
@@ -117,35 +156,33 @@ func sendStartGame(server *GameServer) error {
 	return nil
 }
 
-func createS2CCommand(command fb.ServerCommand, status fb.S2CStatus, code int64, message string, body []byte) []byte {
-	builder := flatbuffers.NewBuilder(1024)
+func sendPlayerInput(s *GameServer, playerInput *gametypes.PlayerInput) {
+	bodyBytes := serialization.SerializePlayerInput(playerInput)
 
-	// 创建message字符串
-	var messageOffset flatbuffers.UOffsetT
-	if message != "" {
-		messageOffset = builder.CreateString(message)
-	}
+	data := createS2CCommand(fb.ServerCommandS2C_COMMAND_PLAYERINPUTSYNC, fb.S2CStatusS2C_STATUS_SUCCESS, 0, "", bodyBytes)
 
-	// 创建body字节数组
-	var bodyOffset flatbuffers.UOffsetT
-	if body != nil {
-		bodyOffset = builder.CreateByteVector(body)
+	for _, player := range s.players {
+		_, err := player.conn.Write(data)
+		if err != nil {
+			log.Printf("Failed to send player input to player %d: %v", player.id, err)
+			continue
+		}
 	}
+}
 
-	// 开始构建S2CCommand
-	fb.S2CCommandStart(builder)
-	fb.S2CCommandAddCommand(builder, command)
-	fb.S2CCommandAddStatus(builder, status)
-	fb.S2CCommandAddCode(builder, code)
-	if message != "" {
-		fb.S2CCommandAddMessage(builder, messageOffset)
-	}
-	if body != nil {
-		fb.S2CCommandAddBody(builder, bodyOffset)
-	}
-	rootOffset := fb.S2CCommandEnd(builder)
+func sendWorldSync(s *GameServer) {
+	bodyBytes := serialization.SerializeWorldSync(gametypes.WorldSync{
+		LogicFrame: int32(s.logicFrame),
+	})
+	// Create S2CCommand
+	data := createS2CCommand(fb.ServerCommandS2C_COMMAND_WORLDSYNC, fb.S2CStatusS2C_STATUS_SUCCESS, 0, "", bodyBytes)
 
-	// 完成构建
-	builder.Finish(rootOffset)
-	return builder.FinishedBytes()
+	// Broadcast to all players
+	for _, player := range s.players {
+		_, err := player.conn.Write(data)
+		if err != nil {
+			log.Printf("Failed to send world sync to player %d: %v", player.id, err)
+			continue
+		}
+	}
 }

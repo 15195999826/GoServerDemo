@@ -1,6 +1,8 @@
 package main
 
 import (
+	"gameproject/source/gametypes"
+	"gameproject/source/serialization"
 	"gameproject/source/test/fbtest"
 	"log"
 	"time"
@@ -39,4 +41,32 @@ func main() {
 	// 测试时间
 	t := time.Second / time.Duration(20)
 	log.Println(t.Milliseconds())
+
+	fbtest.TestWorldSync()
+	fbtest.TestPlayerInput()
+
+	// 测试序列化玩家数据
+	testPlayers := []gametypes.SerializePlayer{
+		{
+			ID:       1,
+			Position: gametypes.Vector2Int{X: 100, Y: 200},
+		},
+		{
+			ID:       2,
+			Position: gametypes.Vector2Int{X: 300, Y: 400},
+		},
+		{
+			ID:       3,
+			Position: gametypes.Vector2Int{X: 500, Y: 600},
+		},
+	}
+
+	testStartEnterGame := gametypes.StartEnterGame{
+		Players: testPlayers,
+	}
+
+	startEnterGame := serialization.SerializeS2CStartEnterGame(&testStartEnterGame)
+
+	retStartEnterGame := serialization.DeserializeS2CStartEnterGame(startEnterGame)
+	log.Println("反序列化结果:%v", retStartEnterGame)
 }

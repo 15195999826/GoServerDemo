@@ -4,21 +4,21 @@ import (
 	"strings"
 )
 
-type GameMap struct {
+type GUIGameMap struct {
 	Width     int
 	Height    int
 	GUIPlayer *GUIPlayer
 }
 
-func NewGameMap(width, height int) *GameMap {
-	return &GameMap{
+func NewGameMap(width, height int) *GUIGameMap {
+	return &GUIGameMap{
 		Width:     width,
 		Height:    height,
 		GUIPlayer: NewPlayer(0, 0),
 	}
 }
 
-func (m *GameMap) Render() string {
+func (m *GUIGameMap) Render() string {
 	var sb strings.Builder
 	for y := 0; y < m.Height; y++ {
 		for x := 0; x < m.Width; x++ {

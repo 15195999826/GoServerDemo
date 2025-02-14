@@ -9,8 +9,9 @@ enum ServerCommand : byte {
   S2C_COMMAND_STARTENTERGAME = 3, // 开始进入游戏, 客户端收到消息后开始加载游戏
   S2C_COMMAND_STARTGAME = 4, // 与各个客户端约定在某个unix时间戳开始游戏
   S2C_COMMAND_RESPONSETIME = 10, // 响应时间同步
-  
-  S2C_COMMAND_WORLDSYNC = 100,  // 转发玩家指令
+
+  S2C_COMMAND_PLAYERINPUTSYNC = 100, // 玩家输入
+  S2C_COMMAND_WORLDSYNC = 101,  // 世界同步
 }
 
 enum S2CStatus : byte {
@@ -39,20 +40,15 @@ table S2CEnterRoom {
 
 table S2CStartEnterGame {
     // Todo: 发送其他各个玩家的初始数据
+    players:[fb.Player];
 }
 
 table S2CStartGame {
     appointed_server_time:long; // 约定的游戏开始时间
 }
 
-table S2CPlyaerInput {
-    player_id:int;
-    inputs:[fb.PlayerInput];
-}
-
 table S2CWorldSync {
     logic_frame:int;
-    commands:[fb.S2CPlyaerInput];
 }
 
 root_type S2CCommand;
