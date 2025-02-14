@@ -29,8 +29,8 @@ func (s GameState) String() string {
 }
 
 type Player struct {
-	id       int
-	position gametypes.Vector2Int
+	ID       int
+	Position gametypes.Vector2Int
 }
 
 type GameClient struct {
@@ -41,7 +41,7 @@ type GameClient struct {
 	timeSyncedTimes          int
 	systemTimeDiffWithServer int64
 	alreadyTimeSyncTimes     int
-	lastSendTime             time.Time
+	lastSendSyncTime         time.Time
 
 	rtt time.Duration
 
@@ -53,8 +53,18 @@ type GameClient struct {
 	desiredGameStartTime int64
 	gameStartTime        time.Time
 
-	gameMap    *gametypes.GameMap
-	logicFrame int
+	gameMap           *gametypes.GameMap
+	logicFrame        int
+	bUpdateLogicFrame bool
+	desiredLogicFrame int
+	lastPlayInput     *gametypes.PlayerInput
+	lastSendInputTime time.Time
+
+	syncInputQueue []gametypes.PlayerInput
+
+	// 回调函数
+	bindLocalPlayer func(localID int)
+	onPlayerUpdate  func(players *Player)
 }
 
 func NewGameClient() *GameClient {
@@ -63,6 +73,7 @@ func NewGameClient() *GameClient {
 		alreadyTimeSyncTimes: 0,
 		logicFrame:           0,
 		players:              make(map[int]*Player),
+		syncInputQueue:       make([]gametypes.PlayerInput, 0),
 	}
 
 	client.gameMap = gametypes.NewGameMap(10, 10)
@@ -152,6 +163,7 @@ func (c *GameClient) handleMessage(s2cCommand *fb.S2CCommand) (err error) {
 	case fb.ServerCommandS2C_COMMAND_ENTERROOM:
 		enterRoom := fb.GetRootAsS2CEnterRoom(s2cCommand.BodyBytes(), 0)
 		c.playerID = int(enterRoom.PlayerId())
+		c.bindLocalPlayer(c.playerID)
 		heartbeatInterval := float32(enterRoom.HeartbeatInterval()) / 2 // 这里用一般的时间发送Ping
 		c.heartbeatInterval = time.Duration(heartbeatInterval) * time.Second
 		c.timeSyncedTimes = int(enterRoom.TimeSyncTimes()) // 首次请求看起来会存在冷启动的问题， 首次不计入平均值
@@ -169,8 +181,13 @@ func (c *GameClient) handleMessage(s2cCommand *fb.S2CCommand) (err error) {
 				return fmt.Errorf("Player %d already exists, current players: %v", player.ID, c.players)
 			}
 			c.players[player.ID] = &Player{
-				id:       player.ID,
-				position: player.Position,
+				ID:       player.ID,
+				Position: player.Position,
+			}
+
+			// 通知UI更新玩家
+			if c.onPlayerUpdate != nil {
+				c.onPlayerUpdate(c.players[player.ID])
 			}
 		}
 
@@ -184,10 +201,13 @@ func (c *GameClient) handleMessage(s2cCommand *fb.S2CCommand) (err error) {
 		c.desiredGameStartTime = startGame.AppointedServerTime() + c.systemTimeDiffWithServer
 		c.gameState = GameCountDown
 	case fb.ServerCommandS2C_COMMAND_WORLDSYNC:
+		worldSync := serialization.DeserializeWorldSync(s2cCommand.BodyBytes())
+		c.bUpdateLogicFrame = true
+		c.desiredLogicFrame = int(worldSync.LogicFrame)
 	case fb.ServerCommandS2C_COMMAND_RESPONSETIME:
 		c.alreadyTimeSyncTimes++
 		responseTime := fb.GetRootAsS2CResponseTime(s2cCommand.BodyBytes(), 0)
-		thzTimeRTT := time.Since(c.lastSendTime)
+		thzTimeRTT := time.Since(c.lastSendSyncTime)
 		serverTime := responseTime.ServerTime()
 		// int64
 		thzTimeSystemTimeDiffWithServer := time.Now().UnixMilli() - serverTime
@@ -200,6 +220,9 @@ func (c *GameClient) handleMessage(s2cCommand *fb.S2CCommand) (err error) {
 			c.systemTimeDiffWithServer = (c.systemTimeDiffWithServer*int64(c.alreadyTimeSyncTimes-2) + thzTimeSystemTimeDiffWithServer) / int64(c.alreadyTimeSyncTimes-1)
 			log.Printf("AVG, rtt: %d ms, system time diff with server: %v ms", c.rtt.Milliseconds(), c.systemTimeDiffWithServer)
 		}
+	case fb.ServerCommandS2C_COMMAND_PLAYERINPUTSYNC:
+		playerInput := serialization.DeserializePlayerInput(s2cCommand.BodyBytes())
+		c.syncInputQueue = append(c.syncInputQueue, playerInput)
 	}
 
 	return nil
@@ -211,17 +234,72 @@ func (c *GameClient) tick(tickTime time.Time) {
 	case Room:
 		if c.alreadyTimeSyncTimes < c.timeSyncedTimes {
 			sendRequestTime(c.conn)
-			c.lastSendTime = time.Now()
+			c.lastSendSyncTime = time.Now()
 		}
 	case GameCountDown:
 		if time.Now().UnixMilli() >= c.desiredGameStartTime {
 			c.gameStartTime = time.Now()
 			c.gameState = Game
+			c.lastSendInputTime = tickTime
 		}
 	case Game:
 		// Todo: 在UE中实现时， 使用游戏时间累加计算， 在服务端使用系统时间
 		// log.Printf("[%v]Game running...", tickTime.UnixMilli()-c.gameStartTime.UnixMilli())
+		// 每2秒发送自己的输入
+		if tickTime.Sub(c.lastSendInputTime) >= 2*time.Second && c.lastPlayInput != nil {
+			sendPlayerInput(c.conn, c.lastPlayInput)
+			c.lastPlayInput = nil
+			c.lastSendInputTime = tickTime
+		}
 
+		if c.bUpdateLogicFrame {
+			c.logicFrame = c.desiredLogicFrame
+			c.bUpdateLogicFrame = false
+		}
+
+		// 处理收到的玩家输入，按顺序执行那些帧号小于当前逻辑帧的输入
+		if len(c.syncInputQueue) > 0 {
+			var remainingInputs []gametypes.PlayerInput
+			for _, input := range c.syncInputQueue {
+				if int(input.LogicFrame) <= c.logicFrame {
+					// 执行输入
+					if player, ok := c.players[input.ID]; ok {
+						// 计算新位置
+						newPos := player.Position
+						switch input.CommandType {
+						case gametypes.MoveLeft:
+							newPos.X--
+						case gametypes.MoveRight:
+							newPos.X++
+						case gametypes.MoveUp:
+							newPos.Y--
+						case gametypes.MoveDown:
+							newPos.Y++
+						}
+
+						// 检查新位置是否在地图范围内
+						if newPos.X >= 0 && newPos.X < c.gameMap.MapData.Width &&
+							newPos.Y >= 0 && newPos.Y < c.gameMap.MapData.Height {
+							// 更新位置
+							player.Position = newPos
+
+							// 通知UI更新玩家位置
+							if c.onPlayerUpdate != nil {
+								c.onPlayerUpdate(player)
+							}
+						}
+					} else {
+						log.Printf("[Error]tick Player %d not found", input.ID)
+					}
+				} else {
+					// 将未处理的输入保存回队列
+					remainingInputs = append(remainingInputs, input)
+				}
+			}
+
+			// 更新输入队列，只保留未处理的输入
+			c.syncInputQueue = remainingInputs
+		}
 	case GameOver:
 	default:
 		log.Println("未处理的 game state")
@@ -236,6 +314,37 @@ func (c *GameClient) Close() {
 	}
 }
 
-func (c *GameClient) SendMovement(dx, dy int) {
-	sendMovement(c.conn, c.logicFrame, dx, dy)
+func (c *GameClient) SendMovement(dx, dy int) error {
+	if dx == 0 && dy == 0 {
+		// 错误的输入
+		err := fmt.Errorf("错误的指令")
+		return err
+	}
+
+	var inputType gametypes.PlayerCommandType
+
+	if dx > 0 {
+		inputType = gametypes.MoveRight
+	} else if dx < 0 {
+		inputType = gametypes.MoveLeft
+	} else if dy > 0 {
+		inputType = gametypes.MoveUp
+	} else if dy < 0 {
+		inputType = gametypes.MoveDown
+	}
+	c.lastPlayInput = &gametypes.PlayerInput{
+		ID:          c.playerID,
+		LogicFrame:  c.logicFrame,
+		CommandType: inputType,
+	}
+
+	return nil
+}
+
+func (c *GameClient) SetOnPlayersUpdate(callback func(player *Player)) {
+	c.onPlayerUpdate = callback
+}
+
+func (c *GameClient) SetBindLocalPlayer(f func(localID int)) {
+	c.bindLocalPlayer = f
 }

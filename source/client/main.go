@@ -24,6 +24,13 @@ func main() {
 		// Connect callback
 		func() error {
 			client = backend.NewGameClient()
+			client.SetOnPlayersUpdate(func(player *backend.Player) {
+				mainWindow.UpdatePlayers(player)
+			})
+
+			client.SetBindLocalPlayer(func(localID int) {
+				mainWindow.BindLocalPlayer(localID)
+			})
 			if err := client.Connect(); err != nil {
 				return err
 			}

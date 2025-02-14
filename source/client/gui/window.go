@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"gameproject/source/client/backend"
 	"log"
 
 	"fyne.io/fyne/v2"
@@ -23,14 +24,16 @@ var (
 )
 
 type GameWindow struct {
-	window     fyne.Window
-	gameMap    *GUIGameMap
-	mapLabel   *widget.Label
-	logEntry   *widget.Entry
-	nickname   *widget.Entry
-	onConnect  func() error
-	onStart    func()
-	onMovement func(dx, dy int) // Add movement callback
+	window             fyne.Window
+	gameMap            *GUIGameMap
+	mapLabel           *widget.Label
+	nickname           *widget.Entry
+	ip                 *widget.Entry
+	lastPlayerInput    *widget.Label
+	nextSendInputTimer *widget.Label
+	onConnect          func() error
+	onStart            func()
+	onMovement         func(dx, dy int) // Add movement callback
 }
 
 func NewGameWindow() *GameWindow {
@@ -50,6 +53,11 @@ func NewGameWindow() *GameWindow {
 	gw.nickname = widget.NewEntry()
 	gw.nickname.SetPlaceHolder("Enter your nickname")
 
+	gw.ip = widget.NewEntry()
+	gw.ip.SetPlaceHolder("Enter server IP")
+	// 默认是本地服务器
+	gw.ip.SetText("127.0.0.1")
+
 	// Create control buttons
 	startBtn := widget.NewButton("Start Game", func() {
 		if gw.onConnect != nil {
@@ -66,30 +74,26 @@ func NewGameWindow() *GameWindow {
 	// Movement buttons
 	upBtn := widget.NewButton("↑", func() {
 		if gw.onMovement != nil {
-			gw.onMovement(0, -1)
+			gw.onMovement(0, 1)
 		}
-		gw.updateMap()
 	})
 
 	downBtn := widget.NewButton("↓", func() {
 		if gw.onMovement != nil {
-			gw.onMovement(0, 1)
+			gw.onMovement(0, -1)
 		}
-		gw.updateMap()
 	})
 
 	leftBtn := widget.NewButton("←", func() {
 		if gw.onMovement != nil {
 			gw.onMovement(-1, 0)
 		}
-		gw.updateMap()
 	})
 
 	rightBtn := widget.NewButton("→", func() {
 		if gw.onMovement != nil {
 			gw.onMovement(1, 0)
 		}
-		gw.updateMap()
 	})
 
 	// Movement controls layout
@@ -100,19 +104,38 @@ func NewGameWindow() *GameWindow {
 	)
 
 	// Right side panel with controls and player info
-	rightPanel := container.NewVBox(
-		widget.NewLabel("Player Settings"),
-		gw.nickname,
+	controlPanel := container.NewVBox(
 		widget.NewLabel(""),
 		startBtn,
 		widget.NewLabel("Movement Controls"),
 		controls,
 	)
 
+	settingsPanel := container.NewVBox(
+		widget.NewLabel("Player Settings"),
+		gw.nickname,
+		gw.ip,
+	)
+
+	gw.lastPlayerInput = widget.NewLabel("无输入")
+	gw.lastPlayerInput.TextStyle = fyne.TextStyle{Monospace: true}
+
+	gw.nextSendInputTimer = widget.NewLabel("-1")
+	gw.nextSendInputTimer.TextStyle = fyne.TextStyle{Monospace: true}
+
+	gameStatePanel := container.NewVBox(
+		widget.NewLabel("当前输入:"),
+		gw.lastPlayerInput,
+		widget.NewLabel("下次发送计时器:"),
+		gw.nextSendInputTimer,
+	)
+
 	// Top row with game map and controls
 	topRow := container.NewHBox(
 		container.NewPadded(gw.mapLabel),
-		container.NewPadded(rightPanel),
+		container.NewPadded(controlPanel),
+		container.NewPadded(settingsPanel),
+		container.NewPadded(gameStatePanel),
 	)
 
 	// Main layout
@@ -186,4 +209,19 @@ func (gw *GameWindow) SetCallbacks(onConnect func() error, onStart func(), onMov
 
 func (gw *GameWindow) GetNickname() string {
 	return gw.nickname.Text
+}
+
+func (gw *GameWindow) BindLocalPlayer(localID int) {
+	gw.gameMap.LocalID = localID
+}
+
+func (gw *GameWindow) UpdatePlayers(player *backend.Player) {
+	// 检查gw.gameMap.Players中是否已经存在该玩家
+	if _, ok := gw.gameMap.Players[player.ID]; !ok {
+		gw.gameMap.Players[player.ID] = NewGUIPlayer(player.ID, player.Position.X, player.Position.Y)
+	} else {
+		gw.gameMap.Players[player.ID].MoveTo(player.Position.X, player.Position.Y, gw.gameMap.Width, gw.gameMap.Height)
+	}
+
+	gw.updateMap()
 }

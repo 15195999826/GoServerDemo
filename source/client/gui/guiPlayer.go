@@ -1,11 +1,11 @@
 package gui
 
 type GUIPlayer struct {
-	X, Y int
+	ID, X, Y int
 }
 
-func NewPlayer(x, y int) *GUIPlayer {
-	return &GUIPlayer{X: x, Y: y}
+func NewGUIPlayer(id, x, y int) *GUIPlayer {
+	return &GUIPlayer{ID: id, X: x, Y: y}
 }
 
 func (p *GUIPlayer) Move(dx, dy int, mapWidth, mapHeight int) bool {
@@ -18,4 +18,11 @@ func (p *GUIPlayer) Move(dx, dy int, mapWidth, mapHeight int) bool {
 		return true
 	}
 	return false
+}
+
+func (p *GUIPlayer) MoveTo(x int, y int, width int, height int) {
+	if x >= 0 && x < width && y >= 0 && y < height {
+		p.X = x
+		p.Y = y
+	}
 }

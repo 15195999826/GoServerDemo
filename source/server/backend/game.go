@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"gameproject/fb"
 	"gameproject/source/gametypes"
+	"gameproject/source/serialization"
 	"log"
 	"math/rand/v2"
 	"strconv"
@@ -431,11 +432,7 @@ func (s *GameServer) handlePlayer(player *Player) {
 			player.isReady = true
 		case fb.ClientCommandC2S_COMMAND_PLAYERINPUT:
 			// 玩家输入存入缓存队列
-			c2sinput := fb.GetRootAsPlayerInput(c2sCommand.BodyBytes(), 0)
-			playerInput := gametypes.PlayerInput{
-				LogicFrame:  int(c2sinput.Frame()),
-				CommandType: gametypes.ConvertFBPlayerCommandType(c2sinput.CommandType()),
-			}
+			playerInput := serialization.DeserializePlayerInput(c2sCommand.BodyBytes())
 			s.inputQueue = append(s.inputQueue, playerInput)
 			// Todo: 目前直接转发, 以后考虑是否增加跟当前逻辑帧的校验关系
 			sendPlayerInput(s, &playerInput)
