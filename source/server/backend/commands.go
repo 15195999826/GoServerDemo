@@ -173,6 +173,7 @@ func sendPlayerInput(s *GameServer, playerInput *gametypes.PlayerInput) {
 func sendWorldSync(s *GameServer) {
 	bodyBytes := serialization.SerializeWorldSync(gametypes.WorldSync{
 		LogicFrame: int32(s.logicFrame),
+		ServerTime: time.Now().UnixMilli(),
 	})
 	// Create S2CCommand
 	data := createS2CCommand(fb.ServerCommandS2C_COMMAND_WORLDSYNC, fb.S2CStatusS2C_STATUS_SUCCESS, 0, "", bodyBytes)

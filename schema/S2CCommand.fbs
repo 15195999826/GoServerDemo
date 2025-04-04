@@ -49,6 +49,7 @@ table S2CStartGame {
 
 table S2CWorldSync {
     logic_frame:int;
+    server_time:long;
 }
 
 root_type S2CCommand;

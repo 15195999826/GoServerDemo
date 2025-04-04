@@ -297,8 +297,10 @@ func (s *GameServer) tick(tickTime time.Time) {
 		// 游戏逻辑， 服务端目前只做指令转发
 		s.frameCounter++
 		logicFrameUpdated := false
-		if s.frameCounter == s.config.TickRate*2 {
-			s.logicFrame++
+		s.logicFrame++
+
+		// 目前配置下，相当于每0.5秒进行一次world sync
+		if s.frameCounter == s.config.TickRate/2 {
 			s.frameCounter = 0
 			logicFrameUpdated = true
 		}
@@ -446,11 +448,18 @@ func (s *GameServer) assignPlayerPositions() {
 	positions := make(map[int]*gametypes.Vector2Int)
 	availablePositions := make([]gametypes.Vector2Int, 0)
 
+	// Calculate center offsets
+	centerX := s.gameMap.MapData.Width / 2
+	centerY := s.gameMap.MapData.Height / 2
+
 	// Create list of all possible positions
-	// Excluding edges for better gameplay
+	// Excluding extreme edges for better gameplay
 	for x := 1; x < s.gameMap.MapData.Width-1; x++ {
 		for y := 1; y < s.gameMap.MapData.Height-1; y++ {
-			availablePositions = append(availablePositions, gametypes.Vector2Int{X: x, Y: y})
+			// Convert to centered coordinate system where (0,0) is the center
+			centeredX := x - centerX
+			centeredY := y - centerY
+			availablePositions = append(availablePositions, gametypes.Vector2Int{X: centeredX, Y: centeredY})
 		}
 	}
 

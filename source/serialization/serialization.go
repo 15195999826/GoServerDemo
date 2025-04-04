@@ -34,6 +34,7 @@ func SerializeWorldSync(data gametypes.WorldSync) []byte {
 	// Create S2CWorldSync
 	fb.S2CWorldSyncStart(builder)
 	fb.S2CWorldSyncAddLogicFrame(builder, int32(data.LogicFrame))
+	fb.S2CWorldSyncAddServerTime(builder, int64(data.ServerTime))
 	worldSyncOffset := fb.S2CWorldSyncEnd(builder)
 
 	builder.Finish(worldSyncOffset)

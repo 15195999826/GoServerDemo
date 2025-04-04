@@ -69,6 +69,7 @@ type PlayerInput struct {
 
 type WorldSync struct {
 	LogicFrame int32
+	ServerTime int64
 }
 
 type GameMapData struct {
