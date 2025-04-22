@@ -222,6 +222,7 @@ func (c *GameClient) handleMessage(s2cCommand *fb.S2CCommand) (err error) {
 		}
 	case fb.ServerCommandS2C_COMMAND_PLAYERINPUTSYNC:
 		playerInput := serialization.DeserializePlayerInput(s2cCommand.BodyBytes())
+		log.Printf("Player %d input sync, logic frame: %d, command type: %d", playerInput.ID, playerInput.LogicFrame, playerInput.CommandType)
 		c.syncInputQueue = append(c.syncInputQueue, playerInput)
 	}
 
@@ -267,11 +268,11 @@ func (c *GameClient) tick(tickTime time.Time) {
 						// 计算新位置
 						newPos := player.Position
 						switch input.CommandType {
-						case gametypes.MoveLeft:
+						case gametypes.MoveTopLeft:
 							newPos.X--
-						case gametypes.MoveRight:
+						case gametypes.MoveTopRight:
 							newPos.X++
-						case gametypes.MoveUp:
+						case gametypes.MoveTop:
 							newPos.Y--
 						case gametypes.MoveDown:
 							newPos.Y++
@@ -324,11 +325,11 @@ func (c *GameClient) SendMovement(dx, dy int) error {
 	var inputType gametypes.PlayerCommandType
 
 	if dx > 0 {
-		inputType = gametypes.MoveRight
+		inputType = gametypes.MoveTopRight
 	} else if dx < 0 {
-		inputType = gametypes.MoveLeft
+		inputType = gametypes.MoveTopLeft
 	} else if dy > 0 {
-		inputType = gametypes.MoveUp
+		inputType = gametypes.MoveTop
 	} else if dy < 0 {
 		inputType = gametypes.MoveDown
 	}

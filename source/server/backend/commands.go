@@ -84,6 +84,8 @@ func sendEnterRoomMessage(player *Player, server *GameServer) error {
 	fb.S2CEnterRoomAddPlayerId(builder, int32(player.id))
 	fb.S2CEnterRoomAddTimeSyncTimes(builder, int32(server.config.TimeSyncTimes))
 	fb.S2CEnterRoomAddHeartbeatInterval(builder, int32(server.config.HeartbeatInterval.Seconds()))
+	fb.S2CEnterRoomAddSendInputInterval(builder, server.config.SendInputInterval)
+	fb.S2CEnterRoomAddExecutionDuration(builder, server.config.ExecutionDuration)
 	enterRoomOffset := fb.S2CEnterRoomEnd(builder)
 
 	builder.Finish(enterRoomOffset)

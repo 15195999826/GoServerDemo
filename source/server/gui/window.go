@@ -19,7 +19,7 @@ var (
 	logEntry         *widget.Entry
 	startButton      *widget.Button
 	stopButton       *widget.Button
-	OnConfigure      func(port, tickRate, maxPlayers, heartbeat, timeSyncTimes, appointedServerTimeDelay string) error
+	OnConfigure      func(port, tickRate, maxPlayers, heartbeat, timeSyncTimes, appointedServerTimeDelay, sendInputInterval, executionDuration string) error
 	OnStart          func() error
 	OnStop           func()
 	myApp            fyne.App
@@ -35,6 +35,8 @@ type ServerConfig struct {
 	HeartbeatInterval        string
 	TimeSyncTimes            string
 	AppointedServerTimeDelay string
+	SendInputInterval        string
+	ExecutionDuration        string
 }
 
 // 创建可滚动到底部的多行文本框
@@ -61,7 +63,7 @@ func newScrollableLabel(text string) *widget.Entry {
 }
 
 // SetServerCallbacks sets the callback functions for server control
-func SetServerCallbacks(configure func(port, tickRate, maxPlayers, heartbeat, timeSysncTimes, appointedServerTimeDelay string) error,
+func SetServerCallbacks(configure func(port, tickRate, maxPlayers, heartbeat, timeSysncTimes, appointedServerTimeDelay, sendInputInterval, executionDuration string) error,
 	start func() error,
 	stop func()) {
 	OnConfigure = configure
@@ -96,6 +98,8 @@ func CreateWindow() {
 		HeartbeatInterval:        "5",
 		TimeSyncTimes:            "10",
 		AppointedServerTimeDelay: "3",
+		SendInputInterval:        "5.0",
+		ExecutionDuration:        "1.0",
 	}
 
 	// Configuration section
@@ -111,6 +115,10 @@ func CreateWindow() {
 	timeSyncTimesEntry.SetText(config.TimeSyncTimes)
 	appointedServerTimeDelayEntry := widget.NewEntry()
 	appointedServerTimeDelayEntry.SetText(config.AppointedServerTimeDelay)
+	sendInputIntervalEntry := widget.NewEntry()
+	sendInputIntervalEntry.SetText(config.SendInputInterval)
+	executionDurationEntry := widget.NewEntry()
+	executionDurationEntry.SetText(config.ExecutionDuration)
 
 	configBox := container.NewGridWithColumns(2,
 		widget.NewLabel("Port:"),
@@ -125,12 +133,16 @@ func CreateWindow() {
 		timeSyncTimesEntry,
 		widget.NewLabel("等待游戏开始时间 (s):"),
 		appointedServerTimeDelayEntry,
+		widget.NewLabel("指令发送间隔 (s):"),
+		sendInputIntervalEntry,
+		widget.NewLabel("执行阶段时长 (s):"),
+		executionDurationEntry,
 	)
 
 	// Control buttons
 	startButton = widget.NewButton("Start Server", func() {
 		if OnConfigure != nil {
-			err := OnConfigure(portEntry.Text, tickRateEntry.Text, maxPlayersEntry.Text, heartbeatEntry.Text, timeSyncTimesEntry.Text, appointedServerTimeDelayEntry.Text)
+			err := OnConfigure(portEntry.Text, tickRateEntry.Text, maxPlayersEntry.Text, heartbeatEntry.Text, timeSyncTimesEntry.Text, appointedServerTimeDelayEntry.Text, sendInputIntervalEntry.Text, executionDurationEntry.Text)
 			if err != nil {
 				writeLog("Configuration error: " + err.Error())
 				return

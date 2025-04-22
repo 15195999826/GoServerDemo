@@ -54,6 +54,8 @@ type ServerConfig struct {
 	HeartbeatInterval        time.Duration
 	TimeSyncTimes            int
 	AppointedServerTimeDelay time.Duration
+	SendInputInterval        float32
+	ExecutionDuration        float32
 }
 
 type Player struct {
@@ -80,7 +82,7 @@ func NewGameServer() *GameServer {
 	return server
 }
 
-func (s *GameServer) Configure(port, tickRate, maxPlayers, heartbeat, timeSysncTimes, appointedServerTimeDelay string) error {
+func (s *GameServer) Configure(port, tickRate, maxPlayers, heartbeat, timeSysncTimes, appointedServerTimeDelay, sendInputInterval, executionDuration string) error {
 	p, err := strconv.Atoi(port)
 	if err != nil {
 		return err
@@ -111,6 +113,19 @@ func (s *GameServer) Configure(port, tickRate, maxPlayers, heartbeat, timeSysncT
 		return err
 	}
 
+	// 转化为float
+	sf, err := strconv.ParseFloat(sendInputInterval, 64)
+	if err != nil {
+		return err
+	}
+
+	// 转化为float
+	execf, err := strconv.ParseFloat(executionDuration, 64)
+	if err != nil {
+		return err
+	}
+	// 根据TickRate计算发送输入间隔帧数
+
 	s.config = &ServerConfig{
 		Port:                     p,
 		TickRate:                 t,
@@ -118,6 +133,8 @@ func (s *GameServer) Configure(port, tickRate, maxPlayers, heartbeat, timeSysncT
 		HeartbeatInterval:        time.Duration(h) * time.Second,
 		TimeSyncTimes:            ts,
 		AppointedServerTimeDelay: time.Duration(a) * time.Second,
+		SendInputInterval:        float32(sf),
+		ExecutionDuration:        float32(execf),
 	}
 	return nil
 }
@@ -335,61 +352,6 @@ func (s *GameServer) tick(tickTime time.Time) {
 	default:
 		return
 	}
-
-	// // 创建游戏状态并广播
-	// builder := flatbuffers.NewBuilder(1024)
-
-	// // 创建玩家状态数组
-	// playerStates := make([]flatbuffers.UOffsetT, 0, len(s.players))
-	// for id, player := range s.players {
-	// 	// 创建位置
-	// 	GameProtocol.Vector2Start(builder)
-	// 	GameProtocol.Vector2AddX(builder, player.position.x)
-	// 	GameProtocol.Vector2AddY(builder, player.position.y)
-	// 	pos := GameProtocol.Vector2End(builder)
-
-	// 	// 创建玩家名称
-	// 	name := builder.CreateString("Player" + string(id))
-
-	// 	// 创建玩家状态
-	// 	GameProtocol.PlayerStateStart(builder)
-	// 	GameProtocol.PlayerStateAddId(builder, int32(player.id))
-	// 	GameProtocol.PlayerStateAddPosition(builder, pos)
-	// 	GameProtocol.PlayerStateAddName(builder, name)
-	// 	playerState := GameProtocol.PlayerStateEnd(builder)
-
-	// 	playerStates = append(playerStates, playerState)
-	// }
-
-	// // 创建玩家状态数组
-	// GameProtocol.GameStateStartPlayersVector(builder, len(playerStates))
-	// for i := len(playerStates) - 1; i >= 0; i-- {
-	// 	builder.PrependUOffsetT(playerStates[i])
-	// }
-	// players := builder.EndVector(len(playerStates))
-
-	// // 创建游戏状态
-	// GameProtocol.GameStateStart(builder)
-	// GameProtocol.GameStateAddPlayers(builder, players)
-	// GameProtocol.GameStateAddTick(builder, 0)
-	// gameState := GameProtocol.GameStateEnd(builder)
-
-	// // 创建消息
-	// GameProtocol.MessageStart(builder)
-	// GameProtocol.MessageAddType(builder, GameProtocol.MessageTypeWorldSync)
-	// GameProtocol.MessageAddPayload(builder, gameState)
-	// message := GameProtocol.MessageEnd(builder)
-
-	// builder.Finish(message)
-
-	// // 广播给所有玩家
-	// data := builder.FinishedBytes()
-	// for _, player := range s.players {
-	// 	_, err := player.conn.Write(data)
-	// 	if err != nil {
-	// 		log.Printf("Failed to send update to player %d: %v", player.id, err)
-	// 	}
-	// }
 }
 
 func (s *GameServer) handlePlayer(player *Player) {
@@ -435,6 +397,7 @@ func (s *GameServer) handlePlayer(player *Player) {
 		case fb.ClientCommandC2S_COMMAND_PLAYERINPUT:
 			// 玩家输入存入缓存队列
 			playerInput := serialization.DeserializePlayerInput(c2sCommand.BodyBytes())
+			log.Printf("Player %d input: %v", player.id, playerInput)
 			s.inputQueue = append(s.inputQueue, playerInput)
 			// Todo: 目前直接转发, 以后考虑是否增加跟当前逻辑帧的校验关系
 			sendPlayerInput(s, &playerInput)

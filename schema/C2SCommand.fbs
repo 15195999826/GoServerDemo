@@ -8,6 +8,7 @@ enum ClientCommand : byte {
   C2S_COMMAND_REQUESTTIME = 10,
 
   C2S_COMMAND_PLAYERINPUT = 100,
+  C2S_COMMAND_CONNETC = 101, // 连接服务器
 }
 
 table C2SCommand {

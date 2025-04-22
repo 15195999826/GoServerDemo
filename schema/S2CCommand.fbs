@@ -36,6 +36,8 @@ table S2CEnterRoom {
     player_id:int;
     time_sync_times:int; // 时间同步次数
     heartbeat_interval:int; // 心跳间隔， 单位秒
+    send_input_interval:float; // 发送输入间隔，单位秒
+    execution_duration:float; // 执行时间，单位秒   
 }
 
 table S2CStartEnterGame {

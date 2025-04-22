@@ -10,8 +10,8 @@ func main() {
 
 	// Setup GUI callbacks
 	gui.SetServerCallbacks(
-		func(port, tickRate, maxPlayers, heartbeat, timeSysncTimes, appointedServerTimeDelay string) error {
-			return server.Configure(port, tickRate, maxPlayers, heartbeat, timeSysncTimes, appointedServerTimeDelay)
+		func(port, tickRate, maxPlayers, heartbeat, timeSysncTimes, appointedServerTimeDelay, sendInputInterval, executionDuration string) error {
+			return server.Configure(port, tickRate, maxPlayers, heartbeat, timeSysncTimes, appointedServerTimeDelay, sendInputInterval, executionDuration)
 		},
 		func() error {
 			return server.Start()

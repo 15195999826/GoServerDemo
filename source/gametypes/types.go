@@ -8,31 +8,40 @@ import (
 type PlayerCommandType int
 
 const (
-	MoveLeft PlayerCommandType = iota
-	MoveRight
-	MoveUp
+	Invalid PlayerCommandType = iota
+	MoveTop
+	MoveTopLeft
+	MoveTopRight
 	MoveDown
+	MoveDownLeft
+	MoveDownRight
 )
 
 func (s PlayerCommandType) String() string {
-	return [...]string{"MoveLeft", "MoveRight", "MoveUp", "MoveDown"}[s]
+	return [...]string{"Invalid", "MoveTop", "MoveTopLeft", "MoveTopRight", "MoveDown", "MoveDownLeft", "MoveDownRight"}[s]
 }
 
 var (
 	// FB命令类型到内部命令类型的映射
 	fbToInternalCmd = map[fb.PlayerCommandType]PlayerCommandType{
-		fb.PlayerCommandTypeMoveLeft:  MoveLeft,
-		fb.PlayerCommandTypeMoveRight: MoveRight,
-		fb.PlayerCommandTypeMoveUp:    MoveUp,
-		fb.PlayerCommandTypeMoveDown:  MoveDown,
+		fb.PlayerCommandTypeInvalid:       Invalid,
+		fb.PlayerCommandTypeMoveTop:       MoveTop,
+		fb.PlayerCommandTypeMoveTopLeft:   MoveTopLeft,
+		fb.PlayerCommandTypeMoveTopRight:  MoveTopRight,
+		fb.PlayerCommandTypeMoveDown:      MoveDown,
+		fb.PlayerCommandTypeMoveDownLeft:  MoveDownLeft,
+		fb.PlayerCommandTypeMoveDownRight: MoveDownRight,
 	}
 
 	// 内部命令类型到FB命令类型的映射
 	internalToFBCmd = map[PlayerCommandType]fb.PlayerCommandType{
-		MoveLeft:  fb.PlayerCommandTypeMoveLeft,
-		MoveRight: fb.PlayerCommandTypeMoveRight,
-		MoveUp:    fb.PlayerCommandTypeMoveUp,
-		MoveDown:  fb.PlayerCommandTypeMoveDown,
+		Invalid:       fb.PlayerCommandTypeInvalid,
+		MoveTop:       fb.PlayerCommandTypeMoveTop,
+		MoveTopLeft:   fb.PlayerCommandTypeMoveTopLeft,
+		MoveTopRight:  fb.PlayerCommandTypeMoveTopRight,
+		MoveDown:      fb.PlayerCommandTypeMoveDown,
+		MoveDownLeft:  fb.PlayerCommandTypeMoveDownLeft,
+		MoveDownRight: fb.PlayerCommandTypeMoveDownRight,
 	}
 )
 
@@ -41,7 +50,7 @@ func ConvertFBPlayerCommandType(t fb.PlayerCommandType) PlayerCommandType {
 		return cmd
 	}
 	log.Printf("未知的FB PlayerCommandType: %d", t)
-	return MoveLeft // 默认值
+	return MoveTopLeft // 默认值
 }
 
 func ConvertPlayerCommandType(t PlayerCommandType) fb.PlayerCommandType {
@@ -49,7 +58,7 @@ func ConvertPlayerCommandType(t PlayerCommandType) fb.PlayerCommandType {
 		return cmd
 	}
 	log.Printf("未知的PlayerCommandType: %d", t)
-	return fb.PlayerCommandTypeMoveLeft // 默认值
+	return fb.PlayerCommandTypeMoveTop // 默认值
 }
 
 type SerializePlayer struct {
