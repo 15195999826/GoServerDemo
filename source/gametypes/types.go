@@ -9,39 +9,24 @@ type PlayerCommandType int
 
 const (
 	Invalid PlayerCommandType = iota
-	MoveTop
-	MoveTopLeft
-	MoveTopRight
-	MoveDown
-	MoveDownLeft
-	MoveDownRight
+	UseAbility
 )
 
 func (s PlayerCommandType) String() string {
-	return [...]string{"Invalid", "MoveTop", "MoveTopLeft", "MoveTopRight", "MoveDown", "MoveDownLeft", "MoveDownRight"}[s]
+	return [...]string{"Invalid", "UseAbility"}[s]
 }
 
 var (
 	// FB命令类型到内部命令类型的映射
 	fbToInternalCmd = map[fb.PlayerCommandType]PlayerCommandType{
-		fb.PlayerCommandTypeInvalid:       Invalid,
-		fb.PlayerCommandTypeMoveTop:       MoveTop,
-		fb.PlayerCommandTypeMoveTopLeft:   MoveTopLeft,
-		fb.PlayerCommandTypeMoveTopRight:  MoveTopRight,
-		fb.PlayerCommandTypeMoveDown:      MoveDown,
-		fb.PlayerCommandTypeMoveDownLeft:  MoveDownLeft,
-		fb.PlayerCommandTypeMoveDownRight: MoveDownRight,
+		fb.PlayerCommandTypeInvalid:    Invalid,
+		fb.PlayerCommandTypeUseAbility: UseAbility,
 	}
 
 	// 内部命令类型到FB命令类型的映射
 	internalToFBCmd = map[PlayerCommandType]fb.PlayerCommandType{
-		Invalid:       fb.PlayerCommandTypeInvalid,
-		MoveTop:       fb.PlayerCommandTypeMoveTop,
-		MoveTopLeft:   fb.PlayerCommandTypeMoveTopLeft,
-		MoveTopRight:  fb.PlayerCommandTypeMoveTopRight,
-		MoveDown:      fb.PlayerCommandTypeMoveDown,
-		MoveDownLeft:  fb.PlayerCommandTypeMoveDownLeft,
-		MoveDownRight: fb.PlayerCommandTypeMoveDownRight,
+		Invalid:    fb.PlayerCommandTypeInvalid,
+		UseAbility: fb.PlayerCommandTypeUseAbility,
 	}
 )
 
@@ -50,7 +35,7 @@ func ConvertFBPlayerCommandType(t fb.PlayerCommandType) PlayerCommandType {
 		return cmd
 	}
 	log.Printf("未知的FB PlayerCommandType: %d", t)
-	return MoveTopLeft // 默认值
+	return Invalid // 默认值
 }
 
 func ConvertPlayerCommandType(t PlayerCommandType) fb.PlayerCommandType {
@@ -58,7 +43,7 @@ func ConvertPlayerCommandType(t PlayerCommandType) fb.PlayerCommandType {
 		return cmd
 	}
 	log.Printf("未知的PlayerCommandType: %d", t)
-	return fb.PlayerCommandTypeMoveTop // 默认值
+	return fb.PlayerCommandTypeInvalid // 默认值
 }
 
 type SerializePlayer struct {
@@ -70,10 +55,16 @@ type StartEnterGame struct {
 	Players []SerializePlayer
 }
 
+type PlayerCommand struct {
+	AbilityID int
+	Position  Vector2Int
+	CustomStr string
+}
+
 type PlayerInput struct {
-	ID          int
-	LogicFrame  int
-	CommandType PlayerCommandType
+	ID         int
+	LogicFrame int
+	Commands   []PlayerCommand
 }
 
 type WorldSync struct {

@@ -3,18 +3,8 @@ namespace fb;
 enum PlayerCommandType:byte {
     // 无效命令
     Invalid = 0, 
-    // 向上移动
-    MoveTop = 1,
-    // 向下移动
-    MoveDown = 2,
-    // 向左上移动
-    MoveTopLeft = 3,
-    // 向右上移动
-    MoveTopRight = 4,
-    // 向左下移动
-    MoveDownLeft = 5,
-    // 向右下移动
-    MoveDownRight = 6,
+    // 使用技能
+    UseAbility = 1,
 }
 
 table Vector2Int {
@@ -22,10 +12,17 @@ table Vector2Int {
     y:int;
 }
 
+table PlayerCommand {
+    command_type:PlayerCommandType;
+    ability_id:int; // 技能ID
+    position:Vector2Int; // 目标位置
+    custom_string:string; // 自定义字符串
+}
+
 table PlayerInput {
     player_id:int;
     frame:int;
-    command_type:PlayerCommandType;
+    commands:[PlayerCommand]; // 玩家输入的命令
 }
 
 table Player {
