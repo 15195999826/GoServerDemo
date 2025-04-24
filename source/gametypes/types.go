@@ -56,9 +56,10 @@ type StartEnterGame struct {
 }
 
 type PlayerCommand struct {
-	AbilityID int
-	Position  Vector2Int
-	CustomStr string
+	CommandType PlayerCommandType
+	AbilityID   int
+	Position    Vector2Int
+	CustomStr   string
 }
 
 type PlayerInput struct {

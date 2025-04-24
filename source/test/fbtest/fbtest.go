@@ -87,17 +87,157 @@ func DeserializeMessage(buf []byte) {
 }
 
 func TestPlayerInput() {
-	testData := gametypes.PlayerInput{
-		ID:          12345,
-		LogicFrame:  100,
-		CommandType: gametypes.MoveDown,
+	// 构造测试数据
+	commands := []gametypes.PlayerCommand{
+		{
+			CommandType: gametypes.UseAbility,
+			AbilityID:   101,
+			Position: gametypes.Vector2Int{
+				X: 200,
+				Y: 300,
+			},
+			CustomStr: "技能1",
+		},
 	}
+
+	testData := gametypes.PlayerInput{
+		ID:         12345,
+		LogicFrame: 100,
+		Commands:   commands,
+	}
+
 	// 序列化
 	data := serialization.SerializePlayerInput(&testData)
-	fmt.Println("Serialized data length:", len(data))
+	fmt.Println("序列化数据长度:", len(data))
 
 	// 反序列化
-	fmt.Println("\nDeserialized data:")
+	fmt.Println("\n反序列化数据:")
 	deserializedData := serialization.DeserializePlayerInput(data)
-	fmt.Printf("LogicFrame: %v\n", deserializedData)
+
+	// 打印基本信息
+	fmt.Printf("玩家ID: %v\n", deserializedData.ID)
+	fmt.Printf("逻辑帧: %v\n", deserializedData.LogicFrame)
+	fmt.Printf("命令数量: %v\n", len(deserializedData.Commands))
+
+	// 打印每个命令的详细信息
+	for i, cmd := range deserializedData.Commands {
+		fmt.Printf("\n命令 #%d:\n", i+1)
+		fmt.Printf("  命令类型: %v\n", cmd.CommandType)
+		fmt.Printf("  技能ID: %v\n", cmd.AbilityID)
+		fmt.Printf("  目标位置: (%v, %v)\n", cmd.Position.X, cmd.Position.Y)
+		fmt.Printf("  自定义字符串: %v\n", cmd.CustomStr)
+	}
+
+	// 验证数据是否一致
+	fmt.Println("\n验证结果:")
+	if deserializedData.ID != testData.ID {
+		fmt.Printf("错误: 玩家ID不匹配. 预期 %v, 实际 %v\n", testData.ID, deserializedData.ID)
+	}
+	if deserializedData.LogicFrame != testData.LogicFrame {
+		fmt.Printf("错误: 逻辑帧不匹配. 预期 %v, 实际 %v\n", testData.LogicFrame, deserializedData.LogicFrame)
+	}
+	if len(deserializedData.Commands) != len(testData.Commands) {
+		fmt.Printf("错误: 命令数量不匹配. 预期 %v, 实际 %v\n", len(testData.Commands), len(deserializedData.Commands))
+	} else {
+		for i, origCmd := range testData.Commands {
+			desCmd := deserializedData.Commands[i]
+
+			if desCmd.CommandType != origCmd.CommandType {
+				fmt.Printf("错误: 命令 #%d 命令类型不匹配. 预期 %v, 实际 %v\n", i+1, origCmd.CommandType, desCmd.CommandType)
+			}
+			if desCmd.AbilityID != origCmd.AbilityID {
+				fmt.Printf("错误: 命令 #%d 技能ID不匹配. 预期 %v, 实际 %v\n", i+1, origCmd.AbilityID, desCmd.AbilityID)
+			}
+			if desCmd.Position.X != origCmd.Position.X || desCmd.Position.Y != origCmd.Position.Y {
+				fmt.Printf("错误: 命令 #%d 位置不匹配. 预期 (%v, %v), 实际 (%v, %v)\n",
+					i+1, origCmd.Position.X, origCmd.Position.Y, desCmd.Position.X, desCmd.Position.Y)
+			}
+			if desCmd.CustomStr != origCmd.CustomStr {
+				fmt.Printf("错误: 命令 #%d 自定义字符串不匹配. 预期 %v, 实际 %v\n", i+1, origCmd.CustomStr, desCmd.CustomStr)
+			}
+		}
+	}
+
+	fmt.Println("验证完成，如无错误提示则表示测试通过！")
+
+	// 添加第二个测试，测试多个命令的情况
+	fmt.Println("\n\n=== 测试多个命令 ===")
+
+	// 构造测试数据，使用两个命令
+	multiCommands := []gametypes.PlayerCommand{
+		{
+			CommandType: gametypes.UseAbility,
+			AbilityID:   101,
+			Position: gametypes.Vector2Int{
+				X: 200,
+				Y: 300,
+			},
+			CustomStr: "命令1-技能",
+		},
+		{
+			CommandType: gametypes.Invalid,
+			AbilityID:   0,
+			Position: gametypes.Vector2Int{
+				X: 500,
+				Y: 600,
+			},
+			CustomStr: "命令2-无效",
+		},
+	}
+
+	multiTestData := gametypes.PlayerInput{
+		ID:         54321,
+		LogicFrame: 200,
+		Commands:   multiCommands,
+	}
+
+	// 序列化
+	multiData := serialization.SerializePlayerInput(&multiTestData)
+	fmt.Println("序列化数据长度:", len(multiData))
+
+	// 反序列化
+	fmt.Println("\n反序列化数据:")
+	multiDeserializedData := serialization.DeserializePlayerInput(multiData)
+
+	// 打印基本信息
+	fmt.Printf("玩家ID: %v\n", multiDeserializedData.ID)
+	fmt.Printf("逻辑帧: %v\n", multiDeserializedData.LogicFrame)
+	fmt.Printf("命令数量: %v\n", len(multiDeserializedData.Commands))
+
+	// 打印每个命令的详细信息
+	fmt.Println("\n原始命令:")
+	for i, cmd := range multiCommands {
+		fmt.Printf("命令 #%d: 类型=%v, 技能ID=%v, 位置=(%v,%v), 字符串=%v\n",
+			i+1, cmd.CommandType, cmd.AbilityID, cmd.Position.X, cmd.Position.Y, cmd.CustomStr)
+	}
+
+	fmt.Println("\n反序列化命令:")
+	for i, cmd := range multiDeserializedData.Commands {
+		fmt.Printf("命令 #%d: 类型=%v, 技能ID=%v, 位置=(%v,%v), 字符串=%v\n",
+			i+1, cmd.CommandType, cmd.AbilityID, cmd.Position.X, cmd.Position.Y, cmd.CustomStr)
+	}
+
+	// 验证数据是否一致
+	fmt.Println("\n多命令验证结果:")
+	if len(multiDeserializedData.Commands) != len(multiCommands) {
+		fmt.Printf("错误: 命令数量不匹配. 预期 %v, 实际 %v\n", len(multiCommands), len(multiDeserializedData.Commands))
+	} else {
+		for i, origCmd := range multiCommands {
+			desCmd := multiDeserializedData.Commands[i]
+
+			if desCmd.CommandType != origCmd.CommandType {
+				fmt.Printf("错误: 命令 #%d 命令类型不匹配. 预期 %v, 实际 %v\n", i+1, origCmd.CommandType, desCmd.CommandType)
+			}
+			if desCmd.AbilityID != origCmd.AbilityID {
+				fmt.Printf("错误: 命令 #%d 技能ID不匹配. 预期 %v, 实际 %v\n", i+1, origCmd.AbilityID, desCmd.AbilityID)
+			}
+			if desCmd.Position.X != origCmd.Position.X || desCmd.Position.Y != origCmd.Position.Y {
+				fmt.Printf("错误: 命令 #%d 位置不匹配. 预期 (%v, %v), 实际 (%v, %v)\n",
+					i+1, origCmd.Position.X, origCmd.Position.Y, desCmd.Position.X, desCmd.Position.Y)
+			}
+			if desCmd.CustomStr != origCmd.CustomStr {
+				fmt.Printf("错误: 命令 #%d 自定义字符串不匹配. 预期 %v, 实际 %v\n", i+1, origCmd.CustomStr, desCmd.CustomStr)
+			}
+		}
+	}
 }

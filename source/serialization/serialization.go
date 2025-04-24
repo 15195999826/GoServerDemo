@@ -10,10 +10,48 @@ import (
 func SerializePlayerInput(data *gametypes.PlayerInput) []byte {
 	builder := flatbuffers.NewBuilder(1024)
 
+	// 创建命令数组偏移量列表
+	commandOffsets := make([]flatbuffers.UOffsetT, len(data.Commands))
+
+	// 第一步：逆序创建所有命令对象
+	for i := len(data.Commands) - 1; i >= 0; i-- {
+		cmd := data.Commands[i]
+
+		// 创建自定义字符串
+		customStrOffset := builder.CreateString(cmd.CustomStr)
+
+		// 创建Vector2Int（位置）
+		fb.Vector2IntStart(builder)
+		fb.Vector2IntAddX(builder, int32(cmd.Position.X))
+		fb.Vector2IntAddY(builder, int32(cmd.Position.Y))
+		positionOffset := fb.Vector2IntEnd(builder)
+
+		// 创建PlayerCommand
+		fb.PlayerCommandStart(builder)
+		fb.PlayerCommandAddCommandType(builder, gametypes.ConvertPlayerCommandType(cmd.CommandType))
+		fb.PlayerCommandAddAbilityId(builder, int32(cmd.AbilityID))
+		fb.PlayerCommandAddPosition(builder, positionOffset)
+		fb.PlayerCommandAddCustomString(builder, customStrOffset)
+		cmdOffset := fb.PlayerCommandEnd(builder)
+
+		// 存储偏移量到数组中，注意这里保持原始顺序
+		commandOffsets[i] = cmdOffset
+	}
+
+	// 第二步：创建命令数组向量
+	// 启动向量构建
+	fb.PlayerInputStartCommandsVector(builder, len(commandOffsets))
+	// 逆序添加命令，这样在FlatBuffers中会保持原始顺序
+	for i := len(commandOffsets) - 1; i >= 0; i-- {
+		builder.PrependUOffsetT(commandOffsets[i])
+	}
+	commandsVector := builder.EndVector(len(commandOffsets))
+
+	// 第三步：创建PlayerInput
 	fb.PlayerInputStart(builder)
 	fb.PlayerInputAddPlayerId(builder, int32(data.ID))
 	fb.PlayerInputAddFrame(builder, int32(data.LogicFrame))
-	fb.PlayerInputAddCommandType(builder, gametypes.ConvertPlayerCommandType(data.CommandType))
+	fb.PlayerInputAddCommands(builder, commandsVector)
 	playerInputOffset := fb.PlayerInputEnd(builder)
 
 	builder.Finish(playerInputOffset)
@@ -22,10 +60,38 @@ func SerializePlayerInput(data *gametypes.PlayerInput) []byte {
 
 func DeserializePlayerInput(buf []byte) gametypes.PlayerInput {
 	playerInput := fb.GetRootAsPlayerInput(buf, 0)
+
+	// 解析命令数组
+	commands := make([]gametypes.PlayerCommand, 0, playerInput.CommandsLength())
+
+	// 注意：FlatBuffers 在反序列化时保持了序列化时的顺序，无需特殊处理
+	for i := 0; i < playerInput.CommandsLength(); i++ {
+		command := new(fb.PlayerCommand)
+		if playerInput.Commands(command, i) {
+			// 获取位置
+			position := command.Position(nil)
+			var pos gametypes.Vector2Int
+			if position != nil {
+				pos = gametypes.Vector2Int{
+					X: int(position.X()),
+					Y: int(position.Y()),
+				}
+			}
+
+			// 创建PlayerCommand
+			commands = append(commands, gametypes.PlayerCommand{
+				CommandType: gametypes.ConvertFBPlayerCommandType(command.CommandType()),
+				AbilityID:   int(command.AbilityId()),
+				Position:    pos,
+				CustomStr:   string(command.CustomString()),
+			})
+		}
+	}
+
 	return gametypes.PlayerInput{
-		ID:          int(playerInput.PlayerId()),
-		LogicFrame:  int(playerInput.Frame()),
-		CommandType: gametypes.ConvertFBPlayerCommandType(playerInput.CommandType()),
+		ID:         int(playerInput.PlayerId()),
+		LogicFrame: int(playerInput.Frame()),
+		Commands:   commands,
 	}
 }
 

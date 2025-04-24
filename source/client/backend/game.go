@@ -222,7 +222,8 @@ func (c *GameClient) handleMessage(s2cCommand *fb.S2CCommand) (err error) {
 		}
 	case fb.ServerCommandS2C_COMMAND_PLAYERINPUTSYNC:
 		playerInput := serialization.DeserializePlayerInput(s2cCommand.BodyBytes())
-		log.Printf("Player %d input sync, logic frame: %d, command type: %d", playerInput.ID, playerInput.LogicFrame, playerInput.CommandType)
+		// 打印收到的输入
+		log.Printf("Player %d input sync, logic frame: %d", playerInput.ID, playerInput.LogicFrame)
 		c.syncInputQueue = append(c.syncInputQueue, playerInput)
 	}
 
@@ -267,16 +268,16 @@ func (c *GameClient) tick(tickTime time.Time) {
 					if player, ok := c.players[input.ID]; ok {
 						// 计算新位置
 						newPos := player.Position
-						switch input.CommandType {
-						case gametypes.MoveTopLeft:
-							newPos.X--
-						case gametypes.MoveTopRight:
-							newPos.X++
-						case gametypes.MoveTop:
-							newPos.Y--
-						case gametypes.MoveDown:
-							newPos.Y++
-						}
+						// switch input.CommandType {
+						// case gametypes.MoveTopLeft:
+						// 	newPos.X--
+						// case gametypes.MoveTopRight:
+						// 	newPos.X++
+						// case gametypes.MoveTop:
+						// 	newPos.Y--
+						// case gametypes.MoveDown:
+						// 	newPos.Y++
+						// }
 
 						// 检查新位置是否在地图范围内
 						if newPos.X >= 0 && newPos.X < c.gameMap.MapData.Width &&
@@ -322,22 +323,22 @@ func (c *GameClient) SendMovement(dx, dy int) error {
 		return err
 	}
 
-	var inputType gametypes.PlayerCommandType
+	// var inputType gametypes.PlayerCommandType
 
-	if dx > 0 {
-		inputType = gametypes.MoveTopRight
-	} else if dx < 0 {
-		inputType = gametypes.MoveTopLeft
-	} else if dy > 0 {
-		inputType = gametypes.MoveTop
-	} else if dy < 0 {
-		inputType = gametypes.MoveDown
-	}
-	c.lastPlayInput = &gametypes.PlayerInput{
-		ID:          c.playerID,
-		LogicFrame:  c.logicFrame,
-		CommandType: inputType,
-	}
+	// if dx > 0 {
+	// 	inputType = gametypes.MoveTopRight
+	// } else if dx < 0 {
+	// 	inputType = gametypes.MoveTopLeft
+	// } else if dy > 0 {
+	// 	inputType = gametypes.MoveTop
+	// } else if dy < 0 {
+	// 	inputType = gametypes.MoveDown
+	// }
+	// c.lastPlayInput = &gametypes.PlayerInput{
+	// 	ID:          c.playerID,
+	// 	LogicFrame:  c.logicFrame,
+	// 	CommandType: inputType,
+	// }
 
 	return nil
 }
